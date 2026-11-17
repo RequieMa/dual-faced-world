@@ -1,0 +1,12 @@
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+.mono/
+.DS_Store
+Thumbs.db
+
+# 外部资产：忽略内容，只保留 .gdignore
+external-assets/*
+!external-assets/.gdignore
