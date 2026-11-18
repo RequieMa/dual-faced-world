@@ -1,0 +1,5 @@
+# CODEOWNERS
+
+# 所有改动默认需要仓库 owner 审核；GitHub ruleset 的
+# "Require review from Code Owners" 依赖本文件。
+* @RequieMa

@@ -68,26 +68,27 @@ gh pr create --base develop --head feature-<slug>
 - [ ] 版本号按 SemVer 确定（`vMAJOR.MINOR.PATCH`）
 
 ```sh
-git switch release
-git pull --ff-only
-git merge --no-ff develop
-git push origin release
+# 本地预检（不要直接 push 到 release）
+git fetch origin
+git log --oneline origin/release..origin/develop   # 本轮要进 release 的提交
 ```
 
-> 开启了分支保护时，用 `develop → release` 的 PR 代替本地 merge。
+然后开 `develop → release` 的 PR，合并方式选 **Rebase and merge**（或 Squash and merge）。
+
+> 仓库 ruleset `release-for-testing` 对 `main` / `develop` / `release` 启用了
+> **required linear history**，因此禁止 merge commit；`git merge --no-ff` 会被拒绝。
 
 ## 5. Release 验证与发布
 
 1. 在 `release` 上做端到端测试（编辑器/导出包/关键路径）。
 2. 发现问题：从 `release` 切 `hotfix-<slug>`，修完 PR 回 `release`，再回合 `develop`。
-3. 验证通过：
+3. 验证通过后开 `release → main` 的 PR（**Rebase and merge**）；合并后：
 
    ```sh
+   git fetch origin
    git switch main
    git pull --ff-only
-   git merge --no-ff release
    git tag -a vX.Y.Z -m "vX.Y.Z"
-   git push origin main
    git push origin vX.Y.Z
    ```
 
@@ -108,15 +109,22 @@ chore: 构建/工具/依赖
 
 subject 用祈使句、≤ 72 字符；body 说明“为什么”，不要只写“改了什么”。
 
-## 7. 分支保护建议（GitHub 设置）
+## 7. 已启用的 Ruleset
 
-由仓库 admin 在 Settings → Branches / Rulesets 配置（Agent 账号无 admin，不能代配）：
+仓库已启用 `release-for-testing`（active），覆盖 `refs/heads/main`、`develop`、`release`：
 
-| 分支 | 规则 |
+| 规则 | 值 |
 |---|---|
-| `main` | Require PR；1 review；禁止 force push；禁止删除；只允许 release 负责人合并 |
-| `release` | Require PR；1 review；禁止 force push |
-| `develop` | Require PR；1 review；禁止 force push；squash merge |
+| Pull request | 必须；至少 1 approval；要求 Code Owner review |
+| 线性历史 | 必须（禁止 merge commit） |
+| 禁止删除分支 | 是 |
+| 禁止 non-fast-forward | 是 |
+| 允许的合并方式 | merge / squash / rebase（线性历史实际排除 merge commit） |
+
+配套：
+
+- `.github/CODEOWNERS` 已把 `*` 指派给 `@RequieMa`，Code Owner review 就是 RequieMa 的批准。
+- 仍建议 admin 把默认分支从 `main` 改为 `develop`（Agent 账号 `admin=false`，改不了）。
 
 ## 8. Super Agent 的硬约束
 
