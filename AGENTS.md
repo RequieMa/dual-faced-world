@@ -15,6 +15,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 - 禁止直接 push 到 `main` / `develop` / `release`。
 - 禁止 force push 到任何共享分支。
 - 禁止 merge 自己开的 PR。
+- 共享分支启用了 required linear history：PR 用 Squash / Rebase 合并，禁止 merge commit。
 
 ## 2. 接单流程（每一步都必须做）
 
@@ -60,7 +61,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
   godot --headless --path . --script tests/smoke_test.gd
   ```
 
-- 本仓库当前还没有 `project.godot` 与测试框架：在它出现前，不得声称“测试通过”，只能写“未验证”并说明原因。
+- `project.godot` 与 `tests/smoke_test.gd` 已就位；新增系统/场景时先补对应测试，再实现。
 - 不得为了通过而删除/跳过测试；不得改 `.gitignore` 排除测试。
 - 不在 shell 里直接跑 Godot 做长时交互（文件沙箱会拦 `user://`）；优先用 `godot_run_headless` / `godot_run_project`。
 
