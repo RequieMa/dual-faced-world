@@ -213,7 +213,7 @@ func _refresh_hint() -> void:
 # --- 交互 --------------------------------------------------------------------
 
 func _on_note_pressed(clue_id: String) -> void:
-	ClueManager.register_clue(clue_id)
+	ClueManager.register_flag(clue_id)
 	_refresh_clue_list()
 	_refresh_hint()
 

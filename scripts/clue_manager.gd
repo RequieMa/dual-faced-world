@@ -9,6 +9,8 @@ signal clue_registered(clue_id: String, value: Variant)
 signal clues_changed()
 signal definitions_loaded(count: int)
 signal definition_error(message: String)
+## 时间线线索（带 t / cause / source 的档案或实时事件）登记成功
+signal timeline_clue_registered(clue: Dictionary)
 
 const DEFAULT_DEFINITIONS_PATH := "res://resources/data/clues.json"
 
@@ -97,9 +99,10 @@ func get_defined_value(clue_id: String) -> Variant:
 
 # --- 已登记的线索（运行时状态） ----------------------------------------------
 
-## 登记线索：register_clue("door_code_A") 会从 JSON 取默认值；
-## 也允许显式覆盖：register_clue("door_code_A", "A-317")。
-func register_clue(clue_id: String, value: Variant = null) -> void:
+## 登记「全局标志」型线索（玩家是否已拿到某条线索）：
+## register_flag("door_code_A") 会从 JSON 取默认值；也允许显式覆盖。
+## 时间线线索（带时间/因果的 archive/live 事件）走 register_clue()。
+func register_flag(clue_id: String, value: Variant = null) -> void:
 	var resolved: Variant = value
 	if resolved == null:
 		resolved = get_defined_value(clue_id)
@@ -128,6 +131,99 @@ func clear() -> void:
 	if _clues.is_empty():
 		return
 	_clues.clear()
+	clues_changed.emit()
+
+
+# --- 时间线线索（archive / live 的因果链） ------------------------------------
+
+## 时间线线索的登记顺序即事件顺序；id 格式 type_target_t，cause 直接引用 id。
+var _timeline_clues: Array[Dictionary] = []
+var _timeline_ids: Dictionary = {}
+var _timeline_keys: Dictionary = {}
+
+
+## 登记一条带时间与因果的线索。
+##
+## 签名按 Issue #3 固定，第二阶段不得改动：
+##     register_clue(t, type, actor, target, cause, source)
+##
+## 去重键 (t, type, actor, target)：回放来回 seek、实时反复靠近同一交互点
+## 都只登记一次。返回线索 id；命中去重时返回空串（调用方可据此判断是否新事件）。
+func register_clue(at: float, type_name: String, actor: String, target: String,
+		cause: String = "", source: String = "archive") -> String:
+	var time := snappedf(at, 0.1)
+	var dedupe := "%.1f|%s|%s|%s" % [time, type_name, actor, target]
+	if _timeline_keys.has(dedupe):
+		return ""
+	var id := "%s_%s_%.1f" % [type_name, target, time]
+	var clue := {
+		"id": id,
+		"t": time,
+		"type": type_name,
+		"actor": actor,
+		"target": target,
+		"cause": cause,
+		"source": source,
+	}
+	_timeline_clues.append(clue)
+	_timeline_ids[id] = clue
+	_timeline_keys[dedupe] = id
+	timeline_clue_registered.emit(clue.duplicate(true))
+	clues_changed.emit()
+	return id
+
+
+## 按时间升序返回时间线线索（同刻按 id 稳定排序）。
+func get_timeline_clues() -> Array:
+	var result: Array = []
+	for clue in _timeline_clues:
+		result.append((clue as Dictionary).duplicate(true))
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if not is_equal_approx(float(a["t"]), float(b["t"])):
+			return float(a["t"]) < float(b["t"])
+		return String(a["id"]) < String(b["id"]))
+	return result
+
+
+func get_timeline_clue(clue_id: String) -> Dictionary:
+	var clue: Dictionary = _timeline_ids.get(clue_id, {})
+	return clue.duplicate(true)
+
+
+func has_timeline_clue(clue_id: String) -> bool:
+	return _timeline_ids.has(clue_id)
+
+
+## 时间线线索条数；传 type 则只数该类型（如 "pickup"）。
+func timeline_clue_count(type_name: String = "") -> int:
+	if type_name.is_empty():
+		return _timeline_clues.size()
+	var total := 0
+	for clue in _timeline_clues:
+		if String(clue["type"]) == type_name:
+			total += 1
+	return total
+
+
+## 找某类型 + 目标的最新一条（可按 source 过滤），供实时因果链引用。
+func find_latest_timeline_clue(type_name: String, target: String, source: String = "") -> Dictionary:
+	var found: Dictionary = {}
+	for clue in _timeline_clues:
+		if String(clue["type"]) != type_name or String(clue["target"]) != target:
+			continue
+		if not source.is_empty() and String(clue["source"]) != source:
+			continue
+		if found.is_empty() or float(clue["t"]) >= float(found["t"]):
+			found = clue
+	return found.duplicate(true)
+
+
+func clear_timeline_clues() -> void:
+	if _timeline_clues.is_empty():
+		return
+	_timeline_clues.clear()
+	_timeline_ids.clear()
+	_timeline_keys.clear()
 	clues_changed.emit()
 
 

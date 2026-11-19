@@ -1,0 +1,304 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/integrated_sim.gd" id="1_sim"]
+[ext_resource type="Script" path="res://scripts/sim/sim_world.gd" id="2_world"]
+[ext_resource type="Script" path="res://scripts/clue_board.gd" id="3_board"]
+[ext_resource type="Shader" path="res://shaders/scanline_vignette.gdshader" id="4_scan"]
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 1
+background_color = Color(0.035, 0.045, 0.065, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.42, 0.48, 0.6, 1)
+ambient_light_energy = 0.8
+
+[sub_resource type="ShaderMaterial" id="ScanMat"]
+shader = ExtResource("4_scan")
+
+[node name="IntegratedSim" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_sim")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Environment" type="WorldEnvironment" parent="World"]
+environment = SubResource("Env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="World"]
+rotation_degrees = Vector3(-54, -36, 0)
+light_energy = 1.15
+
+[node name="FillLight" type="DirectionalLight3D" parent="World"]
+rotation_degrees = Vector3(-16, 142, 0)
+light_energy = 0.5
+light_color = Color(0.62, 0.72, 1, 1)
+
+[node name="SimWorld" type="Node3D" parent="World"]
+script = ExtResource("2_world")
+
+[node name="MonitorGrid" type="GridContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -412.0
+offset_bottom = -134.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="Cell_01" type="SubViewportContainer" parent="MonitorGrid"]
+custom_minimum_size = Vector2(280, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="MonitorGrid/Cell_01"]
+size = Vector2i(640, 360)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="MonitorGrid/Cell_01/SubViewport"]
+current = true
+fov = 50.0
+
+[node name="Cell_02" type="SubViewportContainer" parent="MonitorGrid"]
+custom_minimum_size = Vector2(280, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="MonitorGrid/Cell_02"]
+size = Vector2i(640, 360)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="MonitorGrid/Cell_02/SubViewport"]
+current = true
+fov = 50.0
+
+[node name="Cell_03" type="SubViewportContainer" parent="MonitorGrid"]
+custom_minimum_size = Vector2(280, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="MonitorGrid/Cell_03"]
+size = Vector2i(640, 360)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="MonitorGrid/Cell_03/SubViewport"]
+current = true
+fov = 50.0
+
+[node name="Cell_04" type="SubViewportContainer" parent="MonitorGrid"]
+custom_minimum_size = Vector2(280, 150)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="MonitorGrid/Cell_04"]
+size = Vector2i(640, 360)
+render_target_update_mode = 4
+
+[node name="Camera3D" type="Camera3D" parent="MonitorGrid/Cell_04/SubViewport"]
+current = true
+fov = 50.0
+
+[node name="TransitionLayer" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ZoomView" type="TextureRect" parent="TransitionLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 0
+
+[node name="ScanlineOverlay" type="ColorRect" parent="TransitionLayer"]
+visible = false
+material = SubResource("ScanMat")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="ZoomViewport" type="SubViewport" parent="TransitionLayer"]
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
+
+[node name="ZoomCamera" type="Camera3D" parent="TransitionLayer/ZoomViewport"]
+current = true
+fov = 50.0
+
+[node name="Chrome" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopBar" type="PanelContainer" parent="Chrome"]
+layout_mode = 1
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -128.0
+offset_right = -412.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="VBox" type="VBoxContainer" parent="Chrome/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HeaderRow" type="HBoxContainer" parent="Chrome/TopBar/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Chrome/TopBar/VBox/HeaderRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.93, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "integrated_sim · 二面世界"
+
+[node name="TimeLabel" type="Label" parent="Chrome/TopBar/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.92, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "实时 045.0s（冻结）"
+
+[node name="ModeButton" type="Button" parent="Chrome/TopBar/VBox/HeaderRow"]
+layout_mode = 2
+text = "回放"
+
+[node name="TransportRow" type="HBoxContainer" parent="Chrome/TopBar/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TapeButtons" type="HBoxContainer" parent="Chrome/TopBar/VBox/TransportRow"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="PlayPauseButton" type="Button" parent="Chrome/TopBar/VBox/TransportRow"]
+layout_mode = 2
+disabled = true
+text = "播放"
+
+[node name="SpeedButtons" type="HBoxContainer" parent="Chrome/TopBar/VBox/TransportRow"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="PlaybackLabel" type="Label" parent="Chrome/TopBar/VBox/TransportRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 1)
+theme_override_font_sizes/font_size = 12
+text = "实时画面：t=45 冻结"
+
+[node name="ScrubRow" type="HBoxContainer" parent="Chrome/TopBar/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ScrubBar" type="HSlider" parent="Chrome/TopBar/VBox/ScrubRow"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+max_value = 45.0
+step = 0.1
+
+[node name="ScrubLabel" type="Label" parent="Chrome/TopBar/VBox/ScrubRow"]
+custom_minimum_size = Vector2(104, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 1)
+theme_override_font_sizes/font_size = 12
+text = "—"
+
+[node name="ClueBoard" type="Control" parent="Chrome"]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -396.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 0
+grow_vertical = 2
+script = ExtResource("3_board")
+
+[node name="BoardVBox" type="VBoxContainer" parent="Chrome/ClueBoard"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 10.0
+offset_right = -12.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 6
+
+[node name="BoardTitle" type="Label" parent="Chrome/ClueBoard/BoardVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.86, 0.92, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "线索板 · archive 0 / live 0"
+
+[node name="Scroll" type="ScrollContainer" parent="Chrome/ClueBoard/BoardVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="Chrome/ClueBoard/BoardVBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="BackHint" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 340.0
+offset_bottom = 52.0
+theme_override_colors/font_color = Color(0.85, 0.93, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 22
+text = "ESC / 右键 返回网格"
