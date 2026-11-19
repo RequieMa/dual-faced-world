@@ -1,20 +1,32 @@
 extends "res://scripts/monitor_grid.gd"
-## integrated_sim：二面世界的集成 simulation（第一阶段 = 只读回放）。
+## integrated_sim：二面世界的集成 simulation。
 ##
-## - 复用 MonitorGrid（基类 transition）、TapeResource / TapeArchive、TimeManager、ClueManager；
-## - 每帧 TapeSampler.sample(tape, playback_time) → SimWorld.apply_state()；
-## - ReplayEventDispatcher 决定何时把事件登记成 archive 线索（(last, now] 窗口）；
-## - 实时视图冻结在 t1=45：present_time=45、TimeManager.speed=0，不推进时钟；
-## - 道具在回放中可见、状态正确，但不可拖拽（拖拽是第二阶段）。
+## - 第一阶段（Issue #3）：只读回放 —— 复用 MonitorGrid（基类 transition）、
+##   TapeResource / TapeArchive、TimeManager、ClueManager；每帧
+##   TapeSampler.sample(tape, playback_time) → SimWorld.apply_state()；
+##   ReplayEventDispatcher 决定何时把事件登记成 archive 线索（(last, now] 窗口）。
+## - 第二阶段（Issue #6）：实时推进 —— present_time 从 45 开始走，LiveRuntime 按同一
+##   EventTimeline 采样并叠加 live 覆盖后 apply_state()；放大视图里可拖拽
+##   Key_01 / Switch_01（回放模式禁止）；实时新事件登记为 source="live" 线索。
+##
+## 两阶段共用同一套接口：apply_state 是唯一状态写入口，
+## ClueManager.register_clue(t, type, actor, target, cause, source) 签名不变。
 
 const SimTimeline = preload("res://scripts/sim/sim_timeline.gd")
 const TapeSampler = preload("res://scripts/sim/tape_sampler.gd")
 const ReplayControllerScript = preload("res://scripts/sim/replay_controller.gd")
 const ReplayEventDispatcherScript = preload("res://scripts/sim/replay_event_dispatcher.gd")
+const LiveRuntimeScript = preload("res://scripts/sim/live_runtime.gd")
 const TapeResourceScript = preload("res://scripts/tapes/tape_resource.gd")
 
 ## 实时/回放的分界时刻：录像带只覆盖 [0,45)，45 之后才是「现在」。
 const LIVE_START_TIME := 45.0
+## 实时时钟流速（1x = 真实时间）。
+const LIVE_TIME_SCALE := 1.0
+## 拖拽拾取半径（世界单位，按射线到道具中心的距离判定）。
+const PICK_RADIUS := 1.2
+const PICKABLE_PROPS: Array[String] = ["Key_01", "Switch_01"]
+const MAP_DRAG_LIMIT := 9.5
 ## 4 路监控 = 地图四角俯视，目标都是地图中心；机位抬高到越过边界墙，
 ## 否则近端墙体会挡住半个画面。
 const CELL_CAMERA_TARGETS: Array[Vector3] = [
@@ -39,18 +51,24 @@ var tapes: Array = []
 
 var _replay: Node = null
 var _dispatcher: Node = null
+var _live_runtime: Node = null
 var _time_manager: Node = null
 var _clue_manager: Node = null
 var _tape_archive: Node = null
 var _active_tape_id := ""
 var _syncing_scrub := false
+## 拖拽状态
+var _dragging := false
+var _drag_prop_name := ""
+var _drag_message := ""
+var _drag_message_until_msec := 0
 
 @onready var _sim_world: Node3D = $World/SimWorld
 @onready var _clue_board = $Chrome/ClueBoard
 @onready var _tape_buttons: HBoxContainer = $Chrome/TopBar/VBox/TransportRow/TapeButtons
 @onready var _speed_buttons: HBoxContainer = $Chrome/TopBar/VBox/TransportRow/SpeedButtons
 @onready var _play_pause_button: Button = $Chrome/TopBar/VBox/TransportRow/PlayPauseButton
-@onready var _playback_label: Label = $Chrome/TopBar/VBox/TransportRow/PlaybackLabel
+@onready var _playback_label: Label = $Chrome/TopBar/VBox/HeaderRow/PlaybackLabel
 @onready var _mode_button: Button = $Chrome/TopBar/VBox/HeaderRow/ModeButton
 @onready var _time_label: Label = $Chrome/TopBar/VBox/HeaderRow/TimeLabel
 @onready var _scrub: HSlider = $Chrome/TopBar/VBox/ScrubRow/ScrubBar
@@ -69,8 +87,10 @@ func _ready() -> void:
 	cell_offsets = CELL_CAMERA_OFFSETS
 	chrome_root = $Chrome
 	super._ready()
+	focus_changed.connect(_on_focus_changed)
 
 	_setup_replay()
+	_setup_live()
 	_setup_ui()
 	if _clue_board != null:
 		_clue_board.setup(_clue_manager)
@@ -79,14 +99,16 @@ func _ready() -> void:
 
 # --- 启动 ---------------------------------------------------------------------
 
-## 第一阶段：实时视图是 t1=45 的冻结画面（不推进时钟）。
+## 第二阶段：实时视图从 t=45 开始推进（第一阶段是冻结在 45 的静帧）。
+## 注意：present_time / speed 是全局 autoload TimeManager 的状态，本场景按「谁在实时
+## 谁负责驱动」的约定独占使用它（回放时冻结、实时 1x 推进）。
 func _boot_live() -> void:
 	mode = Mode.LIVE
 	_active_tape_id = ""
 	if _time_manager != null:
 		_time_manager.present_time = LIVE_START_TIME
-		_time_manager.speed = 0.0
-	_apply_state(SimTimeline.state_at(timeline, LIVE_START_TIME))
+		_time_manager.speed = LIVE_TIME_SCALE
+	_apply_live_frame(LIVE_START_TIME)
 	_refresh_ui()
 
 
@@ -98,6 +120,8 @@ func _build_tapes() -> void:
 		tape.time_start = float(entry["time_start"])
 		tape.time_end = float(entry["time_end"])
 		tape.known_to_player = true
+		# 带内相对事件：给 TapeResource / TimeManager 的档案接口用；
+		# integrated_sim 的回放采样走全局 EventTimeline（TapeSampler），不消费这份副本。
 		for event in timeline.get("events", []):
 			var at := float((event as Dictionary)["t"])
 			if at > tape.time_start and at <= tape.time_end:
@@ -122,6 +146,37 @@ func _setup_replay() -> void:
 	_replay.seeked.connect(_on_replay_seeked)
 	_replay.state_changed.connect(_refresh_ui)
 	_dispatcher.event_dispatched.connect(_on_event_dispatched)
+
+
+func _setup_live() -> void:
+	_live_runtime = LiveRuntimeScript.new()
+	_live_runtime.name = "LiveRuntime"
+	add_child(_live_runtime)
+	_live_runtime.setup(timeline, _sim_world, _clue_manager)
+
+
+## 实时每帧：先跑交互判定（结果写进 live 覆盖），再按同一个 EventTimeline + live 覆盖
+## 算出状态交给 apply_state（唯一写入口）。判定先于 apply，本帧就能看到交互结果。
+func _apply_live_frame(now: float) -> void:
+	if _live_runtime != null:
+		_live_runtime.step(now)
+		_apply_state(_live_runtime.compose(now))
+	else:
+		_apply_state(SimTimeline.state_at(timeline, now))
+
+
+func _process(_delta: float) -> void:
+	if mode != Mode.LIVE or _live_runtime == null:
+		return
+	var now := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
+	var duration := float(timeline.get("duration", SimTimeline.DURATION))
+	if now >= duration:
+		# 时间线走完就停在末帧，避免 present_time 跑出快照范围。
+		now = duration
+		if _time_manager != null:
+			_time_manager.speed = 0.0
+	_apply_live_frame(now)
+	_refresh_clock()
 
 
 func _setup_ui() -> void:
@@ -153,6 +208,7 @@ func _setup_ui() -> void:
 # --- 回放 ---------------------------------------------------------------------
 
 func open_tape(tape_id: String) -> void:
+	_end_drag()
 	var tape = _find_tape(tape_id)
 	if tape == null:
 		push_warning("没有这盘带: %s" % tape_id)
@@ -199,19 +255,158 @@ func seek(value: float) -> void:
 	_refresh_ui()
 
 
-## 返回实时视图：先按 present_time 完整 apply_state 一次，避免从回放画面跳变。
+## 返回实时视图（「从现在这一帧接手」）。
+##
+## 回放期间实时时钟是冻结的；离开回放时把 present_time 定位到正在看的那一帧，
+## 再按它完整 apply_state 一次（含 live 覆盖）。这样实时首帧与回放末帧连续，
+## 不会因为「看带子花了多久」产生跳变（Issue #6 验收 2）。回放里被拖过/改写过的
+## 道具，也在这里被 live 状态覆盖回来。
 func enter_live() -> void:
+	_end_drag()
+	var watched_time := -1.0
+	if _replay != null and _replay.tape != null:
+		watched_time = float(_replay.playback_time)
 	mode = Mode.LIVE
 	_active_tape_id = ""
 	if _replay != null:
 		_replay.close()
-	_apply_realtime_state()
+	if _time_manager != null:
+		if watched_time >= 0.0:
+			_time_manager.present_time = watched_time
+		_time_manager.speed = LIVE_TIME_SCALE
+	var now := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
+	_apply_live_frame(now)
 	_refresh_ui()
 
 
-func _apply_realtime_state() -> void:
+# --- 道具拖拽（只有实时模式 + 放大视图可拖） -----------------------------------
+
+## 程序入口也用于 eval/测试：回放模式下返回 false 且不改变任何状态。
+func drag_prop_to(prop_name: String, ground_pos: Vector3) -> bool:
+	if mode != Mode.LIVE or _live_runtime == null:
+		_set_drag_message("回放中不可拖拽道具")
+		return false
+	if not _live_runtime.drag_prop(prop_name, ground_pos):
+		return false
 	var now := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
-	_apply_state(SimTimeline.state_at(timeline, now))
+	_apply_state(_live_runtime.compose(now))
+	_set_drag_message("拖拽 %s → %.1f, %.1f" % [prop_name, ground_pos.x, ground_pos.z])
+	return true
+
+
+func _gui_input(event: InputEvent) -> void:
+	super._gui_input(event)
+
+	var motion := event as InputEventMouseMotion
+	if motion != null and _dragging:
+		# 在窗口外/失焦时松开左键不会送到这里，用 button_mask 兜底收敛。
+		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			_end_drag()
+			return
+		if _live_runtime != null:
+			drag_prop_to(_drag_prop_name, _ground_point(motion.position))
+		accept_event()
+		return
+
+	var button := event as InputEventMouseButton
+	if button == null or button.button_index != MOUSE_BUTTON_LEFT:
+		return
+
+	if not button.pressed:
+		if _dragging:
+			_end_drag()
+			accept_event()
+		return
+
+	if state != FocusState.FOCUSED:
+		return
+	var picked := _pick_prop_at(button.position)
+	if picked.is_empty():
+		return
+	if mode != Mode.LIVE:
+		# 回放里允许玩家尝试，但明确拒绝：道具位置不变。
+		_set_drag_message("回放中不可拖拽道具")
+		accept_event()
+		return
+	_dragging = true
+	_drag_prop_name = picked
+	if _live_runtime != null:
+		# 拖拽期间暂停交互判定：否则每帧都会把「临时无持有者 + 临时位置」
+		# 当成 agent 到达交互点，登记出幻影 live 线索。
+		_live_runtime.set_dragging(true)
+	accept_event()
+
+
+func _end_drag() -> void:
+	if not _dragging:
+		if _live_runtime != null:
+			_live_runtime.set_dragging(false)
+		return
+	_dragging = false
+	_drag_prop_name = ""
+	if _live_runtime != null:
+		_live_runtime.set_dragging(false)
+
+
+func _on_focus_changed(new_state: int) -> void:
+	if new_state != FocusState.FOCUSED:
+		_end_drag()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_end_drag()
+
+
+## 屏幕坐标 → 放大视图相机的射线（ZoomViewport 与窗口同尺寸，1:1 映射）。
+func _ray_for_screen(screen_pos: Vector2) -> Dictionary:
+	var window_size := get_viewport().get_visible_rect().size
+	var zoom_size := Vector2(_zoom_viewport.size)
+	var viewport_pos := Vector2(screen_pos.x / maxf(window_size.x, 1.0) * zoom_size.x,
+		screen_pos.y / maxf(window_size.y, 1.0) * zoom_size.y)
+	return {
+		"origin": _zoom_camera.project_ray_origin(viewport_pos),
+		"normal": _zoom_camera.project_ray_normal(viewport_pos),
+	}
+
+
+## 射线拾取：取射线到道具中心距离最近且在半径内的那个。
+func _pick_prop_at(screen_pos: Vector2) -> String:
+	if _sim_world == null or _zoom_camera == null:
+		return ""
+	var ray := _ray_for_screen(screen_pos)
+	var origin: Vector3 = ray["origin"]
+	var direction: Vector3 = ray["normal"]
+	var best := ""
+	var best_distance := INF
+	for prop_name in PICKABLE_PROPS:
+		var node: Node3D = _sim_world.get_prop_node(prop_name)
+		if node == null:
+			continue
+		var center := node.global_position
+		var along := (center - origin).dot(direction)
+		if along <= 0.05:
+			continue
+		var closest := origin + direction * along
+		if closest.distance_to(center) <= PICK_RADIUS and along < best_distance:
+			best = prop_name
+			best_distance = along
+	return best
+
+
+## 射线与地面（y=0）交点，并夹在地图范围内。
+func _ground_point(screen_pos: Vector2) -> Vector3:
+	var ray := _ray_for_screen(screen_pos)
+	var origin: Vector3 = ray["origin"]
+	var direction: Vector3 = ray["normal"]
+	if absf(direction.y) < 0.0001:
+		return Vector3.ZERO
+	var distance := -origin.y / direction.y
+	if distance <= 0.0:
+		return Vector3.ZERO
+	var point := origin + direction * distance
+	return Vector3(clampf(point.x, -MAP_DRAG_LIMIT, MAP_DRAG_LIMIT), 0.0,
+		clampf(point.z, -MAP_DRAG_LIMIT, MAP_DRAG_LIMIT))
 
 
 func _on_tape_pressed(tape_id: String) -> void:
@@ -241,7 +436,7 @@ func _on_mode_pressed() -> void:
 func _on_scrub_changed(value: float) -> void:
 	if _syncing_scrub or mode != Mode.REPLAY or _replay == null:
 		return
-	_replay.seek(value)
+	seek(value)
 
 
 func _sync_scrub_range(tape) -> void:
@@ -293,15 +488,17 @@ func _refresh_ui() -> void:
 	var present := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
 	if mode == Mode.LIVE:
 		_mode_button.text = "回放"
-		_time_label.text = "实时 %05.1fs（冻结）" % present
 		_play_pause_button.disabled = true
 		_play_pause_button.text = "播放"
-		_playback_label.text = "实时画面：t=45 冻结"
 		_scrub.editable = false
 		_scrub_label.text = "—"
+		# 回到实时后进度条不再代表上一盘带，恢复成实时时间轴 0–45。
+		_scrub.min_value = 0.0
+		_scrub.max_value = LIVE_START_TIME
 		_syncing_scrub = true
 		_scrub.value = clampf(present, _scrub.min_value, _scrub.max_value)
 		_syncing_scrub = false
+		_refresh_clock()
 	else:
 		_mode_button.text = "返回实时"
 		_time_label.text = "回放 %05.1fs" % _replay.playback_time
@@ -320,6 +517,31 @@ func _refresh_ui() -> void:
 			_replay.playback_time,
 			float(_replay.tape.time_end) if _replay.tape != null else LIVE_START_TIME,
 		]
+		if not _drag_message.is_empty() and Time.get_ticks_msec() < _drag_message_until_msec:
+			_playback_label.text = _drag_message
+
+
+# --- 实时 UI ------------------------------------------------------------------
+
+## 实时时钟标签 + 操作提示（拖拽被拒绝时临时显示原因）。
+func _refresh_clock() -> void:
+	if _time_label == null:
+		return
+	var now := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
+	_time_label.text = "实时 %05.1fs" % now
+	if _playback_label != null:
+		_playback_label.text = _live_hint_text()
+
+
+func _live_hint_text() -> String:
+	if not _drag_message.is_empty() and Time.get_ticks_msec() < _drag_message_until_msec:
+		return _drag_message
+	return "实时推进中 · 可拖拽道具"
+
+
+func _set_drag_message(text: String) -> void:
+	_drag_message = text
+	_drag_message_until_msec = Time.get_ticks_msec() + 2500
 
 
 # --- 运行时查询（godot-bridge eval 验证用） ------------------------------------
@@ -339,8 +561,22 @@ func get_sim_snapshot() -> Dictionary:
 		"props": sim["props"],
 		"apply_count": sim["apply_count"],
 		"clue_count": _clue_manager.timeline_clue_count() if _clue_manager != null else 0,
+		"live_clue_count": _count_live_clues(),
 		"clues": _clue_manager.get_timeline_clues() if _clue_manager != null else [],
+		"live": _live_runtime.get_state() if _live_runtime != null else {},
+		"drag_message": _live_hint_text(),
 	}
+
+
+## 按 source 统计 live 线索（timeline_clue_count 是按 type 统计的，不能混用）。
+func _count_live_clues() -> int:
+	if _clue_manager == null:
+		return 0
+	var total := 0
+	for clue in _clue_manager.get_timeline_clues():
+		if String((clue as Dictionary).get("source", "")) == "live":
+			total += 1
+	return total
 
 
 func get_tape_list() -> Array:
