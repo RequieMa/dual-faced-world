@@ -49,6 +49,8 @@ var _banner: Label = null
 func _ready() -> void:
 	_solved.resize(PUZZLE_DEFS.size())
 	_solved.fill(false)
+	# Area3D 的 input_event 需要开启 3D 鼠标拾取（否则点台子没有反应）。
+	get_viewport().physics_object_picking = true
 	_build_world()
 	_build_ui()
 	_refresh_ui()
@@ -210,6 +212,9 @@ func _build_ui() -> void:
 	var ui := Control.new()
 	ui.name = "Root"
 	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# 全屏 UI 根节点必须 IGNORE：默认 STOP 会把所有鼠标事件吃掉，3D 台子的
+	# Area3D.input_event 永远收不到（子节点如按钮/面板仍然照常接收）。
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(ui)
 
 	var panel := PanelContainer.new()
@@ -284,6 +289,7 @@ func _build_ui() -> void:
 	_banner = _make_label("8 / 8 全部解开 —— 这个房间里没有秘密了。", 22, Color(0.50, 1.0, 0.65))
 	_banner.name = "CompleteBanner"
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner.anchor_top = 1.0
 	_banner.anchor_bottom = 1.0
 	_banner.anchor_right = 1.0
@@ -339,7 +345,8 @@ func _refresh_ui() -> void:
 		var mark := "✓ " if _solved[index] else ""
 		_station_buttons[index].text = "%s%d. %s" % [mark, index + 1, String(PUZZLE_DEFS[index]["title"])]
 	if _banner != null:
-		_banner.visible = is_complete()
+		# 打开谜题页面时先藏横幅，别压在页面底部。
+		_banner.visible = is_complete() and not (_overlay != null and _overlay.visible)
 
 
 # --- 小工具 -------------------------------------------------------------------

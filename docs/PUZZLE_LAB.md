@@ -3,8 +3,8 @@
 一个可交互的 demo-scene，把 8 种常规解谜类型放在同一个房间里：
 
 ```sh
-godot_run_project(scene="scenes/puzzle_lab.tscn")     # 或 godot --path . scenes/puzzle_lab.tscn
-godot --headless --path . --script tests/test_puzzle_lab.gd   # 96 条断言
+godot --path . scenes/puzzle_lab.tscn          # 直接跑这个场景（demo 没有挂成 main scene）
+godot --headless --path . --script tests/test_puzzle_lab.gd   # 101 条断言
 ```
 
 - 左侧列表或直接点 3D 台子都能打开谜题；`ESC` 关闭；解开后顶面变绿、列表打勾，8/8 亮完成横幅。

@@ -16,6 +16,7 @@ var is_solved := false
 var attempts := 0
 var body_box: VBoxContainer = null
 var status_label: Label = null
+var _reset_button: Button = null
 
 
 ## 由实验室调用：设置元数据并搭好外壳 + 谜题本体。
@@ -44,6 +45,9 @@ func reset() -> void:
 			body_box.remove_child(child)
 			child.queue_free()
 		build_body()
+	if _reset_button != null:
+		# 解开后禁用重置（避免页内显示未解、实验室仍记已解的进度不一致），重置回来后恢复。
+		_reset_button.disabled = false
 	state_changed.emit()
 
 
@@ -88,14 +92,16 @@ func succeed(message: String = "解开了！") -> bool:
 		return false
 	is_solved = true
 	set_status(message, true)
+	if _reset_button != null:
+		_reset_button.disabled = true
 	solved.emit(puzzle_id)
 	state_changed.emit()
 	return true
 
 
-## 解谜成功但保持页面（用于「解开后可以重玩」的谜题）。
-func is_finished() -> bool:
-	return is_solved
+## 页内「重置」是否还可点（解开后禁用，避免与实验室进度不一致）。
+func is_reset_enabled() -> bool:
+	return _reset_button != null and not _reset_button.disabled
 
 
 func get_state() -> Dictionary:
@@ -151,5 +157,6 @@ func _build_shell() -> void:
 	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_label.name = "Status"
 	footer.add_child(status_label)
-	footer.add_child(make_button("重置", reset))
+	_reset_button = make_button("重置", reset)
+	footer.add_child(_reset_button)
 	footer.add_child(make_button("返回房间", func() -> void: close_requested.emit()))

@@ -25,3 +25,12 @@ godot --path . scenes/<name>.tscn
 - `scenes/integrated_sim.tscn`：集成 simulation（档案回放 + 实时推进 + 线索板）
 - `scenes/puzzle_lab.tscn`：解谜实验室（8 种常规解谜，见 [docs/PUZZLE_LAB.md](docs/PUZZLE_LAB.md)）
 - `scenes/demo_*.tscn`：TimeManager / TapeArchive / ClueManager 的模块 demo
+
+## 测试
+
+```sh
+godot --headless --path . --script tests/smoke_test.gd
+godot --headless --path . --script tests/test_integrated_sim.gd
+godot --headless --path . --script tests/test_integrated_sim_live.gd
+godot --headless --path . --script tests/test_puzzle_lab.gd
+```

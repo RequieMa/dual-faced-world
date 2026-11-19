@@ -11,11 +11,17 @@ var _value_labels: Array[Label] = []
 
 
 func build_body() -> void:
+	# 每次重建都从空列表开始：否则重复 reset() 会把已释放的 Label 留在表里，
+	# _refresh() 写到 underfreed 对象上（实测 size 累积成 6/9、数值不再更新）。
+	_value_labels.clear()
 	body_box.add_child(make_label("三个拨轮（0–9），按线索停到正确刻度：", 14))
 	for index in range(DIAL_COUNT):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		row.add_child(make_label("拨轮 %d" % (index + 1), 16))
+		var caption := make_label("拨轮 %d" % (index + 1), 16)
+		caption.autowrap_mode = TextServer.AUTOWRAP_OFF
+		caption.custom_minimum_size = Vector2(72, 0)
+		row.add_child(caption)
 		row.add_child(make_button("◀", _on_rotate_pressed.bind(index, -1), 44))
 		var value_label := make_label("0", 30, Color(0.95, 0.97, 1.0))
 		value_label.custom_minimum_size = Vector2(44, 0)
@@ -45,13 +51,6 @@ func rotate(index: int, delta: int) -> bool:
 	if values == target:
 		return succeed("三个拨轮停在 %d-%d-%d，锁舌缩了回去。" % [target[0], target[1], target[2]])
 	return true
-
-
-func set_dial(index: int, value: int) -> void:
-	if index < 0 or index >= DIAL_COUNT:
-		return
-	values[index] = posmod(value, 10)
-	_refresh()
 
 
 func get_values() -> Array:

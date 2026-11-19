@@ -119,8 +119,10 @@ func _test_keypad() -> void:
 	_check("keypad：正确密码 4012 解开", puzzle.submit_code() == true and puzzle.is_solved)
 	_check("keypad：发出 solved 信号且只发一次", signals.size() == 1 and String(signals[0]) == "keypad")
 	_check("keypad：解开后再提交不会重复触发", puzzle.submit_code() == false and signals.size() == 1)
+	_check("keypad：解开后页内重置按钮被禁用（避免与实验室进度不一致）", not puzzle.is_reset_enabled())
 	puzzle.reset()
 	_check("keypad：重置后可重玩", not puzzle.is_solved and puzzle.get_entry() == "" and puzzle.attempts == 0)
+	_check("keypad：重置后页内重置按钮恢复", puzzle.is_reset_enabled())
 	_free_puzzle(puzzle)
 
 
@@ -195,6 +197,12 @@ func _test_dial() -> void:
 	_check("dial：三位拨到 3-7-1 解开", puzzle.is_solved)
 	puzzle.reset()
 	_check("dial：重置回 0-0-0", puzzle.get_values() == [0, 0, 0] and not puzzle.is_solved)
+	# 回归：build_body() 必须清空 _value_labels，否则重复重置会累积已释放的 Label
+	puzzle.reset()
+	puzzle.rotate(0, 1)
+	_check("dial：重复重置后数值仍能更新（Label 引用不泄漏）",
+		puzzle.get_values()[0] == 1 and puzzle._value_labels.size() == 3 and puzzle._value_labels[0].text == "1",
+		"labels=%d text=%s" % [puzzle._value_labels.size(), puzzle._value_labels[0].text if puzzle._value_labels.size() > 0 else "n/a"])
 	_free_puzzle(puzzle)
 
 
@@ -279,6 +287,27 @@ func _test_lab_scene() -> void:
 	_check("实验室有 8 个谜题台", lab.get_puzzle_defs().size() == 8)
 	_check("初始进度 0/8", lab.solved_count() == 0 and not lab.is_complete())
 
+	# 回归：全屏 UI 根节点必须是 IGNORE，否则会把 3D 台子的鼠标事件吃掉
+	var root_ui := lab.get_node_or_null("UI/Root") as Control
+	_check("全屏 UI 根节点不吞鼠标事件", root_ui != null and root_ui.mouse_filter == Control.MOUSE_FILTER_IGNORE,
+		"filter=%s" % (str(root_ui.mouse_filter) if root_ui != null else "n/a"))
+
+	# 回归：点 3D 台子要能打开谜题。
+	# headless 下没有真实的 3D 拾取（取决于窗口/渲染），这里直接触发 Area3D 的
+	# input_event 信号来覆盖「信号 → 处理器」这一段；真实鼠标点台子已在真机验证。
+	var area := lab.get_node_or_null("Station_02/ClickArea") as Area3D
+	_check("2 号台子有 ClickArea（Area3D）", area != null)
+	if area != null:
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		area.input_event.emit(null, press, Vector3.ZERO, Vector3.UP, 0)
+		await create_timer(0.1).timeout
+		_check("点击 3D 台子 2 能打开谜题（key_door）",
+			int(lab.get_lab_snapshot()["active_index"]) == 1,
+			"active=%s" % str(lab.get_lab_snapshot()["active_index"]))
+		lab.close_puzzle()
+
 	for index in range(8):
 		lab.open_puzzle(index)
 		var puzzle = lab.get_active_puzzle()
@@ -295,6 +324,10 @@ func _test_lab_scene() -> void:
 	_check("8 个全部解开后 is_complete", lab.is_complete())
 	var banner := lab.get_node_or_null("UI/Root/CompleteBanner")
 	_check("完成横幅可见", banner != null and banner.visible)
+	lab.open_puzzle(0)
+	_check("打开谜题页面时完成横幅隐藏（不压住页面）", banner != null and not banner.visible)
+	lab.close_puzzle()
+	_check("关闭谜题页面后完成横幅恢复", banner != null and banner.visible)
 	var snapshot: Dictionary = lab.get_lab_snapshot()
 	_check("快照显示 8/8", int(snapshot["solved_count"]) == 8 and String(snapshot["progress_text"]).contains("8 / 8"))
 
