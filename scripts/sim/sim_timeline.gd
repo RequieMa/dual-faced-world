@@ -56,16 +56,25 @@ const AGENT_PATHS := {
 	],
 }
 
-## cause 用线索 id 引用（格式 type_target_t），形成跨事件/跨来源的因果链。
-## planned=true 的事件只存数据：第一阶段不消费，也不派发。
+## cause 用 "@ref" 引用本表，build() 时再用 clue_id() 解析成正式 id——
+## 线索 id 的格式只在 clue_id() 一处定义，改事件时间不会留下断链的字面量。
+const CAUSE_REFS := {
+	"@pickup_key": {"t": 12.0, "type": "pickup", "target": "Key_01"},
+	"@unlock_door_01": {"t": 28.0, "type": "unlock", "target": "Door_01"},
+	"@switch_01": {"t": 20.0, "type": "switch", "target": "Switch_01"},
+}
+
+## cause 引用事件形成因果链。
+## planned=true 的事件只存数据：第一阶段不消费、也不派发；
+## 它们不带 cause（实时阶段由交互重新判定，不预置虚假因果）。
 const EVENTS := [
 	{"t": 12.0, "type": "pickup", "actor": "Agent_A", "target": "Key_01", "cause": ""},
 	{"t": 20.0, "type": "switch", "actor": "Agent_B", "target": "Switch_01", "cause": ""},
-	{"t": 28.0, "type": "unlock", "actor": "Agent_A", "target": "Door_01", "cause": "pickup_Key_01_12.0"},
-	{"t": 35.0, "type": "pass", "actor": "Agent_C", "target": "Door_01", "cause": "unlock_Door_01_28.0"},
-	{"t": 52.0, "type": "unlock", "actor": "Agent_C", "target": "Door_02", "cause": "pickup_Key_01_12.0", "planned": true},
-	{"t": 60.0, "type": "switch", "actor": "Agent_B", "target": "Switch_01", "cause": "switch_Switch_01_20.0", "planned": true},
-	{"t": 75.0, "type": "pass", "actor": "Agent_A", "target": "Door_01", "cause": "unlock_Door_01_28.0", "planned": true},
+	{"t": 28.0, "type": "unlock", "actor": "Agent_A", "target": "Door_01", "cause": "@pickup_key"},
+	{"t": 35.0, "type": "pass", "actor": "Agent_C", "target": "Door_01", "cause": "@unlock_door_01"},
+	{"t": 52.0, "type": "unlock", "actor": "Agent_C", "target": "Door_02", "cause": "", "planned": true},
+	{"t": 60.0, "type": "switch", "actor": "Agent_B", "target": "Switch_01", "cause": "", "planned": true},
+	{"t": 75.0, "type": "pass", "actor": "Agent_A", "target": "Door_01", "cause": "@unlock_door_01", "planned": true},
 ]
 
 
@@ -79,12 +88,13 @@ static func build() -> Dictionary:
 	var snapshots: Array = []
 	var steps := int(round(DURATION / SAMPLE_INTERVAL))
 	for index in range(steps + 1):
-		snapshots.append(_state_at_raw(float(index) * SAMPLE_INTERVAL, true))
+		snapshots.append(_state_at_raw(float(index) * SAMPLE_INTERVAL))
 
 	var events: Array = []
 	for entry in EVENTS:
 		var copy: Dictionary = (entry as Dictionary).duplicate(true)
 		copy["planned"] = bool(copy.get("planned", false))
+		copy["cause"] = _resolve_cause(String(copy.get("cause", "")))
 		copy["id"] = clue_id(float(copy["t"]), String(copy["type"]), String(copy["target"]))
 		events.append(copy)
 
@@ -173,7 +183,17 @@ static func _copy_state(snapshot: Dictionary, at: float) -> Dictionary:
 	return {"t": at, "agents": agents, "props": props}
 
 
-static func _state_at_raw(at: float, _generate: bool) -> Dictionary:
+static func _resolve_cause(cause: String) -> String:
+	if not cause.begins_with("@"):
+		return cause
+	var ref: Dictionary = CAUSE_REFS.get(cause, {})
+	if ref.is_empty():
+		push_warning("未知的 cause 引用: %s" % cause)
+		return ""
+	return clue_id(float(ref.get("t", 0.0)), String(ref.get("type", "")), String(ref.get("target", "")))
+
+
+static func _state_at_raw(at: float) -> Dictionary:
 	var agents := {}
 	for agent_name in AGENT_PATHS.keys():
 		agents[agent_name] = _agent_position(String(agent_name), at)
