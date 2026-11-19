@@ -10,7 +10,7 @@ const SCENE_PATH := "res://scenes/integrated_sim.tscn"
 
 var _failures: Array[String] = []
 var _checks: int = 0
-var _node_tests_done := false
+var _started := false
 
 
 func _initialize() -> void:
@@ -18,13 +18,19 @@ func _initialize() -> void:
 
 
 func _process(_delta: float) -> bool:
-	if _node_tests_done:
-		return true
-	_node_tests_done = true
+	if _started:
+		return false
+	_started = true
+	_run_node_tests()
+	return false
+
+
+func _run_node_tests() -> void:
 	_test_live_rules()
 	_test_scene_live_and_drag()
+	await _test_natural_flow_continuity()
+	await _test_gui_drag_per_frame()
 	_report()
-	return true
 
 
 # --- 断言 ---------------------------------------------------------------------
@@ -199,5 +205,101 @@ func _test_scene_live_and_drag() -> void:
 	_check("切回实时后道具由 live 状态覆盖", not String(live_key.get("holder", "")).is_empty() or
 		(live_key["pos"] as Vector3).distance_to(Vector3(0.0, 0.4, -7.0)) < 0.01, str(live_key))
 
+	scene.queue_free()
+	manager.clear_timeline_clues()
+
+
+## 自然流程下的连续性：实时时钟已经跑到 46.5s，回放 TAPE-03 到末尾（45s）再切回实时，
+## 实时首帧必须落在回放末帧上（「从现在这一帧接手」），不能差 1.4s 的位移。
+func _test_natural_flow_continuity() -> void:
+	var packed := load(SCENE_PATH) as PackedScene
+	var scene = packed.instantiate() if packed != null else null
+	if scene == null:
+		_check("integrated_sim.tscn 可实例化（自然流程连续性）", false)
+		return
+	root.add_child(scene)
+	var tm := root.get_node_or_null("TimeManager")
+	if tm == null:
+		_check("TimeManager autoload 存在（自然流程连续性）", false)
+		scene.queue_free()
+		return
+	tm.present_time = 46.5
+	scene.open_tape("TAPE-03")
+	scene.seek(45.0)
+	var end_snapshot: Dictionary = scene.get_sim_snapshot()
+	var end_agent_c: Vector3 = end_snapshot["agents"]["Agent_C"]
+	scene.enter_live()
+	var live_snapshot: Dictionary = scene.get_sim_snapshot()
+	var live_agent_c: Vector3 = live_snapshot["agents"]["Agent_C"]
+	_check("切回实时落在回放末帧（present_time 已推进到 46.5 的自然流程）",
+		end_agent_c.distance_to(live_agent_c) < 0.1,
+		"replay_end=%s live=%s delta=%.3f" % [end_agent_c, live_agent_c, end_agent_c.distance_to(live_agent_c)])
+	_check("切回实时把「现在」定位到正在看的帧", is_equal_approx(float(tm.present_time), 45.0),
+		"present_time=%s" % tm.present_time)
+	_check("切回实时后模式为 LIVE", String(live_snapshot["mode"]) == "LIVE")
+	scene.queue_free()
+	_clue_manager().clear_timeline_clues()
+
+
+## 逐帧真实鼠标拖拽：拖拽期间 _process 会跑 LiveRuntime.step()，
+## 不能因为「手感上的临时位置 + 临时无持有者」登记出幻影 live pickup。
+func _test_gui_drag_per_frame() -> void:
+	var packed := load(SCENE_PATH) as PackedScene
+	var scene = packed.instantiate() if packed != null else null
+	if scene == null:
+		_check("integrated_sim.tscn 可实例化（逐帧拖拽）", false)
+		return
+	root.add_child(scene)
+	var tm := root.get_node_or_null("TimeManager")
+	var manager := _clue_manager()
+	if tm == null or manager == null:
+		_check("TimeManager / ClueManager 就绪（逐帧拖拽）", false)
+		scene.queue_free()
+		return
+	tm.present_time = 45.0
+	scene.enter_live()
+	manager.clear_timeline_clues()
+	scene._enter_focus(0)
+	await create_timer(0.8).timeout
+	_check("逐帧拖拽前已进入放大视图", scene.get_focus_snapshot()["state"] == "FOCUSED")
+
+	var camera = scene.get_node("TransitionLayer/ZoomViewport/ZoomCamera")
+	var key_pos: Vector3 = scene.get_sim_snapshot()["props"]["Key_01"]["pos"]
+	var start: Vector2 = camera.unproject_position(key_pos)
+	# 落点故意留在 Agent_A 附近：没有拖拽保护时，step() 会在这里误判 pickup
+	var target: Vector2 = camera.unproject_position(Vector3(3.0, 0.4, -5.0))
+
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = start
+	root.push_input(press)
+
+	var counts_during: Array = []
+	for index in range(1, 5):
+		var motion := InputEventMouseMotion.new()
+		motion.position = start.lerp(target, float(index) / 4.0)
+		motion.relative = (target - start) / 4.0
+		motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+		root.push_input(motion)
+		await create_timer(0.12).timeout
+		counts_during.append(manager.timeline_clue_count())
+
+	var clean := true
+	for count in counts_during:
+		if int(count) != 0:
+			clean = false
+	_check("拖拽过程中不登记幻影 live 线索", clean, "counts=%s" % str(counts_during))
+
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = target
+	root.push_input(release)
+	await create_timer(0.1).timeout
+	var after_release: Dictionary = scene.get_sim_snapshot()["props"]["Key_01"]
+	var released_cleanly: bool = not bool(scene._dragging) and (
+		String(after_release.get("holder", "")).is_empty() or not String(after_release.get("holder", "")).is_empty())
+	_check("拖拽结束后挂起状态被清掉", released_cleanly and not bool(scene._dragging), str(after_release))
 	scene.queue_free()
 	manager.clear_timeline_clues()

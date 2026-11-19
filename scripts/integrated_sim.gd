@@ -87,6 +87,7 @@ func _ready() -> void:
 	cell_offsets = CELL_CAMERA_OFFSETS
 	chrome_root = $Chrome
 	super._ready()
+	focus_changed.connect(_on_focus_changed)
 
 	_setup_replay()
 	_setup_live()
@@ -154,8 +155,8 @@ func _setup_live() -> void:
 	_live_runtime.setup(timeline, _sim_world, _clue_manager)
 
 
-## 实时每帧：先按 same EventTimeline 采样 + live 覆盖算出状态并交给 apply_state，
-## 再跑交互判定（判定结果写进 live 覆盖，下一帧生效）。
+## 实时每帧：先跑交互判定（结果写进 live 覆盖），再按同一个 EventTimeline + live 覆盖
+## 算出状态交给 apply_state（唯一写入口）。判定先于 apply，本帧就能看到交互结果。
 func _apply_live_frame(now: float) -> void:
 	if _live_runtime != null:
 		_live_runtime.step(now)
@@ -207,6 +208,7 @@ func _setup_ui() -> void:
 # --- 回放 ---------------------------------------------------------------------
 
 func open_tape(tape_id: String) -> void:
+	_end_drag()
 	var tape = _find_tape(tape_id)
 	if tape == null:
 		push_warning("没有这盘带: %s" % tape_id)
@@ -253,14 +255,24 @@ func seek(value: float) -> void:
 	_refresh_ui()
 
 
-## 返回实时视图：先按 present_time 完整 apply_state 一次（含 live 覆盖），避免从回放画面跳变。
-## 回放里被拖过/改写过的道具，也在这里被 live 状态覆盖回来。
+## 返回实时视图（「从现在这一帧接手」）。
+##
+## 回放期间实时时钟是冻结的；离开回放时把 present_time 定位到正在看的那一帧，
+## 再按它完整 apply_state 一次（含 live 覆盖）。这样实时首帧与回放末帧连续，
+## 不会因为「看带子花了多久」产生跳变（Issue #6 验收 2）。回放里被拖过/改写过的
+## 道具，也在这里被 live 状态覆盖回来。
 func enter_live() -> void:
+	_end_drag()
+	var watched_time := -1.0
+	if _replay != null and _replay.tape != null:
+		watched_time = float(_replay.playback_time)
 	mode = Mode.LIVE
 	_active_tape_id = ""
 	if _replay != null:
 		_replay.close()
 	if _time_manager != null:
+		if watched_time >= 0.0:
+			_time_manager.present_time = watched_time
 		_time_manager.speed = LIVE_TIME_SCALE
 	var now := float(_time_manager.present_time) if _time_manager != null else LIVE_START_TIME
 	_apply_live_frame(now)
@@ -287,6 +299,10 @@ func _gui_input(event: InputEvent) -> void:
 
 	var motion := event as InputEventMouseMotion
 	if motion != null and _dragging:
+		# 在窗口外/失焦时松开左键不会送到这里，用 button_mask 兜底收敛。
+		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			_end_drag()
+			return
 		if _live_runtime != null:
 			drag_prop_to(_drag_prop_name, _ground_point(motion.position))
 		accept_event()
@@ -298,8 +314,7 @@ func _gui_input(event: InputEvent) -> void:
 
 	if not button.pressed:
 		if _dragging:
-			_dragging = false
-			_drag_prop_name = ""
+			_end_drag()
 			accept_event()
 		return
 
@@ -315,7 +330,32 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	_dragging = true
 	_drag_prop_name = picked
+	if _live_runtime != null:
+		# 拖拽期间暂停交互判定：否则每帧都会把「临时无持有者 + 临时位置」
+		# 当成 agent 到达交互点，登记出幻影 live 线索。
+		_live_runtime.set_dragging(true)
 	accept_event()
+
+
+func _end_drag() -> void:
+	if not _dragging:
+		if _live_runtime != null:
+			_live_runtime.set_dragging(false)
+		return
+	_dragging = false
+	_drag_prop_name = ""
+	if _live_runtime != null:
+		_live_runtime.set_dragging(false)
+
+
+func _on_focus_changed(new_state: int) -> void:
+	if new_state != FocusState.FOCUSED:
+		_end_drag()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_end_drag()
 
 
 ## 屏幕坐标 → 放大视图相机的射线（ZoomViewport 与窗口同尺寸，1:1 映射）。

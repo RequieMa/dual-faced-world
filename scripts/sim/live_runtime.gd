@@ -29,12 +29,25 @@ var _overrides: Dictionary = {}
 ## 本运行时登记过的 live 线索 id（按登记顺序）
 var _live_clue_ids: Array[String] = []
 var _last_time := 0.0
+## 拖拽挂起：拖拽期间玩家正在改世界，不做交互判定。
+## 否则每帧都会把「临时无持有者 + 临时位置」当成 agent 到达交互点，
+## 登记出幻影 live 线索（实测每 0.1s 一条）。
+var _dragging := false
 
 
 func setup(timeline: Dictionary, sim_world: Node3D, clue_manager: Node) -> void:
 	_timeline = timeline
 	_sim_world = sim_world
 	_clue_manager = clue_manager
+
+
+## 拖拽开始/结束时由 UI 调用：拖拽期间暂停交互判定。
+func set_dragging(value: bool) -> void:
+	_dragging = value
+
+
+func is_dragging() -> bool:
+	return _dragging
 
 
 ## 基准时间线状态 + live 覆盖（不写节点）。
@@ -52,12 +65,17 @@ func compose(at: float) -> Dictionary:
 
 
 ## 推进一帧的交互判定；返回本次新登记的 live 线索 id。
+## 拖拽进行中只更新「被携带道具跟随持有者」，不判定任何交互（见 _dragging 注释）。
 func step(at: float) -> Array:
 	_last_time = at
 	var new_ids: Array = []
+	if _timeline.is_empty() or _sim_world == null or _clue_manager == null:
+		return new_ids
 	var state: Dictionary = compose(at)
+	if not (state.get("props", {}) as Dictionary).has("Key_01"):
+		return new_ids
 
-	# 被携带的道具每帧跟着持有者走
+	# 被携带的道具每帧跟着持有者走（拖拽期间也要维护，避免其它道具停在旧位置）
 	for prop_name in _overrides.keys():
 		var override: Dictionary = _overrides[prop_name]
 		var holder := String(override.get("holder", ""))
@@ -65,6 +83,9 @@ func step(at: float) -> Array:
 			continue
 		override["pos"] = (state["agents"][holder] as Vector3) + CARRY_OFFSET
 		override["state"] = "carried"
+
+	if _dragging:
+		return new_ids
 
 	var agents: Array = (state["agents"] as Dictionary).keys()
 
@@ -135,22 +156,13 @@ func drag_prop(prop_name: String, ground_pos: Vector3) -> bool:
 	return true
 
 
-func has_override(prop_name: String) -> bool:
-	return _overrides.has(prop_name)
-
-
 func get_state() -> Dictionary:
 	return {
 		"overrides": _overrides.duplicate(true),
 		"live_clue_ids": _live_clue_ids.duplicate(),
 		"last_time": _last_time,
+		"dragging": _dragging,
 	}
-
-
-func reset() -> void:
-	_overrides.clear()
-	_live_clue_ids.clear()
-	_last_time = 0.0
 
 
 # --- 内部 ---------------------------------------------------------------------
