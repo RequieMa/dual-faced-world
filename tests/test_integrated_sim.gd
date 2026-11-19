@@ -31,12 +31,17 @@ func _initialize() -> void:
 
 func _process(_delta: float) -> bool:
 	if _node_tests_done:
-		return true
+		return false
 	_node_tests_done = true
+	_run_node_tests()
+	return false
+
+
+func _run_node_tests() -> void:
 	_test_sim_world_apply_state()
 	_test_scene_boot()
+	await _test_monitor_grid_demo_regression()
 	_report()
-	return true
 
 
 # --- 断言 ---------------------------------------------------------------------
@@ -361,13 +366,48 @@ func _test_scene_boot() -> void:
 	_check("TimeManager autoload 存在", time_manager != null)
 	_check("启动时 present_time == 45.0", time_manager != null and is_equal_approx(float(time_manager.present_time), 45.0),
 		"present_time=%s" % (time_manager.present_time if time_manager != null else "n/a"))
-	_check("实时视图冻结时钟", time_manager != null and is_equal_approx(float(time_manager.speed), 0.0),
+	_check("实时时钟以 1x 推进（第二阶段起为实时推进，不再是冻结画面）",
+		time_manager != null and float(time_manager.speed) > 0.0,
 		"speed=%s" % (time_manager.speed if time_manager != null else "n/a"))
 	_check("3 盘带进入 TapeArchive", tape_archive != null and tape_archive.get_tapes().size() >= 3,
 		"count=%d" % (tape_archive.get_tapes().size() if tape_archive != null else -1))
 	_check("监控网格 4 路 SubViewport", instance.get_node("MonitorGrid").get_child_count() == 4)
+	for index in range(1, 5):
+		var camera := instance.get_node("MonitorGrid/Cell_%02d/SubViewport/Camera3D" % index) as Camera3D
+		_check("Cell_%02d 有 current Camera3D" % index, camera != null and camera.current)
+		if camera == null:
+			continue
+		_check("Cell_%02d 机位在地图四角（不在原点）" % index, camera.global_position.length() > 10.0,
+			str(camera.global_position))
+		var forward := -camera.global_transform.basis.z
+		var to_target := (Vector3(0.0, 0.8, 0.0) - camera.global_position).normalized()
+		_check("Cell_%02d 朝向地图中心" % index, forward.dot(to_target) > 0.9,
+			"dot=%.2f" % forward.dot(to_target))
 	var boot: Dictionary = instance.get_sim_snapshot()
 	_check("启动模式为 LIVE", String(boot.get("mode", "")) == "LIVE", str(boot.get("mode", "")))
 	_check("启动时道具来自 t=45 的冻结状态", String(boot["props"]["Door_01"]["state"]) == "unlocked", str(boot["props"]))
 	_check_near("启动时 playback_time 为 0（未播放）", float(boot.get("playback_time", -1.0)), 0.0)
 	instance.queue_free()
+
+
+## monitor_grid_demo 的行为回归：重构出基类后，放大/返回状态机必须与原来一致。
+func _test_monitor_grid_demo_regression() -> void:
+	if not ResourceLoader.exists("res://scenes/monitor_grid_demo.tscn"):
+		_check("monitor_grid_demo.tscn 存在", false)
+		return
+	var packed := load("res://scenes/monitor_grid_demo.tscn") as PackedScene
+	var demo := packed.instantiate() if packed != null else null
+	_check("monitor_grid_demo.tscn 可实例化", demo != null)
+	if demo == null:
+		return
+	root.add_child(demo)
+	_check("demo 初始为 GRID", demo.get_state_name() == "GRID", demo.get_state_name())
+	demo._enter_focus(1)
+	await create_timer(0.7).timeout
+	_check("demo 放大后进入 FOCUSED", demo.get_state_name() == "FOCUSED", demo.get_state_name())
+	_check("demo 放大时 transition layer 可见", bool(demo.get_focus_snapshot()["transition_layer_visible"]))
+	demo._leave_focus()
+	await create_timer(0.7).timeout
+	_check("demo 返回后回到 GRID", demo.get_state_name() == "GRID", demo.get_state_name())
+	_check("demo 返回后 grid alpha 恢复 1", is_equal_approx(float(demo.get_focus_snapshot()["grid_alpha"]), 1.0))
+	demo.queue_free()

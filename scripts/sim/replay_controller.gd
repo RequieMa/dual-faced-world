@@ -15,9 +15,6 @@ var active := false
 var paused := true
 var speed := 1.0
 var playback_time := 0.0
-## 最近一次「事件窗口」的起点：由 ReplayEventDispatcher 维护自己的副本，
-## 这里保留一份供 eval/调试观察。
-var last_sample_time := 0.0
 
 
 func _process(delta: float) -> void:
@@ -30,7 +27,6 @@ func open_tape(new_tape) -> void:
 	active = true
 	paused = true
 	playback_time = float(tape.time_start) if tape != null else 0.0
-	last_sample_time = playback_time
 	state_changed.emit()
 
 
@@ -39,7 +35,6 @@ func close() -> void:
 	paused = true
 	tape = null
 	playback_time = 0.0
-	last_sample_time = 0.0
 	state_changed.emit()
 
 
@@ -76,13 +71,13 @@ func advance(delta: float) -> bool:
 	return true
 
 
-## 定位：向前 seek 只重建状态不补播事件（窗口起点直接推到目标），
-## 向后 seek 把窗口起点一起回退，重播时事件会重新落入窗口（去重由 ClueManager 负责）。
+## 定位：向前 seek 只重建状态不补播事件（事件窗口起点直接推到目标），
+## 向后 seek 让窗口起点一起回退，重播时事件会重新落入窗口（去重由 ClueManager 负责）。
+## 「窗口起点」只由 ReplayEventDispatcher 持有，controller 不重复维护一份。
 func seek(value: float) -> Dictionary:
 	var previous := playback_time
 	var target := clampf(value, _window_start(), _window_end())
 	playback_time = target
-	last_sample_time = target
 	var forward := target >= previous
 	seeked.emit(previous, target, forward)
 	state_changed.emit()
@@ -95,7 +90,6 @@ func get_state() -> Dictionary:
 		"paused": paused,
 		"speed": speed,
 		"playback_time": playback_time,
-		"last_sample_time": last_sample_time,
 		"tape_id": String(tape.tape_id) if tape != null else "",
 		"time_start": _window_start(),
 		"time_end": _window_end(),

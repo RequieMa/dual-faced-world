@@ -194,10 +194,17 @@ text = "integrated_sim · 二面世界"
 
 [node name="TimeLabel" type="Label" parent="Chrome/TopBar/VBox/HeaderRow"]
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.92, 0.96, 1, 1)
 theme_override_font_sizes/font_size = 13
-text = "实时 045.0s（冻结）"
+text = "实时 045.0s"
+
+[node name="PlaybackLabel" type="Label" parent="Chrome/TopBar/VBox/HeaderRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 1)
+theme_override_font_sizes/font_size = 12
+text = "实时推进中"
+clip_text = true
 
 [node name="ModeButton" type="Button" parent="Chrome/TopBar/VBox/HeaderRow"]
 layout_mode = 2
@@ -219,13 +226,6 @@ text = "播放"
 [node name="SpeedButtons" type="HBoxContainer" parent="Chrome/TopBar/VBox/TransportRow"]
 layout_mode = 2
 theme_override_constants/separation = 3
-
-[node name="PlaybackLabel" type="Label" parent="Chrome/TopBar/VBox/TransportRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 1)
-theme_override_font_sizes/font_size = 12
-text = "实时画面：t=45 冻结"
 
 [node name="ScrubRow" type="HBoxContainer" parent="Chrome/TopBar/VBox"]
 layout_mode = 2

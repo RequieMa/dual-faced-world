@@ -34,7 +34,8 @@ func advance(current: float) -> void:
 	last_sample_time = window_to
 
 
-## seek：不论方向都不派发事件，窗口起点直接落到目标时刻。
+## seek：两个方向都不派发事件，窗口起点直接落到目标时刻。
+## `_forward` 只用于调用方表达意图（窗口语义相同），事件去重由 ClueManager 负责。
 func seek(target: float, _forward: bool) -> void:
 	last_sample_time = target
 
