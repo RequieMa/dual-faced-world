@@ -25,6 +25,7 @@
 
 ## 工程
 
-- [ ] `integrated_sim` Phase 1（已提 Issue，等待 Super Agent 接单/执行）
+- [x] `integrated_sim` Phase 1（Issue #3：只读回放，`scenes/integrated_sim.tscn`）
+- [ ] `integrated_sim` Phase 2（Issue #6：实时推进、道具拖拽、live 因果链）
 - [ ] Phase 1 完成后评估 → `release`；通过端到端测试后 `release → main` 并打 `v0.1.0`
 - [ ] 评估是否把 `godot-bridge` 的 `godot_*` 工具稳定用于 Worker preset（首个真实工单验证）
