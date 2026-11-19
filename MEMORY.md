@@ -183,7 +183,10 @@ Godot 4.4+ 会给每个脚本生成同名 `.uid`（`uid://xxxx`）。它是资�
 - **定义表**（`resources/data/clues.json`）：`id` / `value` / `title` / `source` / `description` / `unlocks` / `action`
 - **运行时状态**（`ClueManager` 内存 `Dictionary`）：只有「玩家是否已登记」
 
-`register_clue(id)` 不传值时从定义表取默认值；`build_action_text(id)` 用 JSON 里的 `action` 模板（`{value}` 占位）生成 UI 文案。demo 里改了 JSON 的 `value` 再点「重新加载」按钮，按钮文案立即跟着变——不需要改任何 `.gd`。
+`register_flag(id)` 不传值时从定义表取默认值；`build_action_text(id)` 用 JSON 里的 `action` 模板（`{value}` 占位）生成 UI 文案。demo 里改了 JSON 的 `value` 再点「重新加载」按钮，按钮文案立即跟着变——不需要改任何 `.gd`。
+
+> 注意：带时间/因果的事件线索走另一个入口 `register_clue(t, type, actor, target, cause, source)`（`integrated_sim` 用），
+> 去重键是 `(t, type, actor, target)`，t 会被归一到 0.1s。旧的「全局标志」接口因此改名 `register_flag`，避免同名混淆。
 
 **判断标准**：出现「策划要调数值/文案」的需求时，先想数据文件；出现「玩家进度/存档状态」时才放内存。
 
