@@ -1,0 +1,30 @@
+{
+  "$comment": "levels/*.json：一个关卡的最小结构（房间 + 机位）。字段按需求逐步扩展，未知字段会被忽略。",
+  "type": "object",
+  "required": ["id", "rooms"],
+  "properties": {
+    "id": { "type": "string" },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "cameras": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "room"],
+        "properties": {
+          "id": { "type": "string" },
+          "room": { "type": "string" }
+        }
+      }
+    }
+  }
+}
