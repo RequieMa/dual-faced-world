@@ -56,13 +56,16 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(data: Dictionary) -> void:
-	if not data is Dictionary:
-		push_warning("GuideableDoor: from_dict 需要 Dictionary，已忽略")
-		return
-	if data.has("id") and data["id"] is String:
-		door_id = data["id"]
-	if data.has("open") and data["open"] is bool:
-		_open = data["open"]
+	if data.has("id"):
+		if data["id"] is String:
+			door_id = data["id"]
+		else:
+			push_warning("GuideableDoor: from_dict 的 id 类型不符，已忽略")
+	if data.has("open"):
+		if data["open"] is bool:
+			_open = data["open"]
+		else:
+			push_warning("GuideableDoor: from_dict 的 open 类型不符，已忽略")
 	_apply_visual()
 
 

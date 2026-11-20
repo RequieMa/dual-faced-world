@@ -116,6 +116,12 @@ func _test_setup_and_groups() -> void:
 	_check("imaginary 保持 imaginary", String(npc.get_state().get("group", "")) == "imaginary")
 	npc.setup("npc_c", "friend")
 	_check("friend 归一化为 imaginary", String(npc.get_state().get("group", "")) == "imaginary")
+	npc.setup("npc_cn", "real")
+	npc.set_route([Vector3.ZERO, Vector3(1.0, 0.0, 0.0)])
+	_check("中文别名「跟我来」-> FOLLOW", npc.on_hint("跟我来") == true and _state_name(npc) == "FOLLOW")
+	_check("中文别名「等待」-> WAIT", npc.on_hint("等待") == true and _state_name(npc) == "WAIT")
+	_check("中文别名「开门」-> OPEN_DOOR", npc.on_hint("开门") == true and _state_name(npc) == "OPEN_DOOR")
+	npc.setup("npc_d", "stranger")
 	npc.setup("npc_d", "stranger")
 	_check("stranger 归一化为 real", String(npc.get_state().get("group", "")) == "real")
 	npc.setup("npc_e", "unknown-group")
@@ -182,6 +188,9 @@ func _test_follow_transition() -> void:
 
 	npc.tick(0.5)
 	_check("FOLLOW 第一段走到中点", _approx(npc.position, Vector3(1.0, 0.0, 0.0)), str(npc.position))
+	var mid_route: Vector3 = npc.position
+	_check("FOLLOW 中重复 follow 幂等", npc.on_hint("follow") == true and _state_name(npc) == "FOLLOW")
+	_check("FOLLOW 中重复 follow 不重置进度", _approx(npc.position, mid_route))
 	npc.tick(0.5)
 	_check("FOLLOW 走到第一个路点", _approx(npc.position, Vector3(2.0, 0.0, 0.0)), str(npc.position))
 	_check("第二段尚未到达", arrived.is_empty())
@@ -328,6 +337,20 @@ func _test_unknown_hint() -> void:
 	_check("无路点 follow 请求 wait", no_route_needs.size() == 1 and String(no_route_needs[0]) == "npc_no_route:wait")
 	_check("无路点 follow 保持 IDLE", _state_name(no_route) == "IDLE")
 
+	# FOLLOW 中收到未知提示：请求提示但不打断当前移动。
+	var moving = _new_npc()
+	moving.setup("npc_moving", "imaginary")
+	moving.set_route([Vector3.ZERO, Vector3(2.0, 0.0, 0.0)])
+	moving.on_hint("follow")
+	var moving_needs: Array = []
+	moving.needs_hint.connect(func(id: String, hint: String) -> void:
+		moving_needs.append(id + ":" + hint)
+	)
+	_check("FOLLOW 中未知提示返回 false", moving.on_hint("dance") == false)
+	_check("FOLLOW 中未知提示保持 FOLLOW", _state_name(moving) == "FOLLOW")
+	_check("FOLLOW 中未知提示发 needs_hint", moving_needs.size() == 1)
+
+	_free_node(moving)
 	_free_node(no_route)
 	_free_node(npc)
 
@@ -364,6 +387,13 @@ func _test_serialization() -> void:
 	restored.tick(2.0)
 	_check("恢复后可继续完成移动", arrived.size() == 1 and _state_name(restored) == "WAIT")
 
+	# route 也接受 Vector3 形式（宿主内存里直接传，不经过 JSON 数组）。
+	var vector_route = _new_npc()
+	vector_route.from_dict({"state": 2, "route": [Vector3(0, 0, 0), Vector3(1, 0, 0)]})
+	_check("from_dict 接受 Vector3 route", int(vector_route.get_state().get("route_size", 0)) == 2)
+	_check("from_dict 恢复 FOLLOW 状态", _state_name(vector_route) == "FOLLOW")
+
+	_free_node(vector_route)
 	_free_node(restored)
 	_free_node(npc)
 

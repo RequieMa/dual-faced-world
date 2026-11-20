@@ -119,6 +119,7 @@ func _test_register_targets() -> void:
 		return
 
 	npc.setup("npc_a", "real")
+	_check("普通 bus 默认不处理帧", bus.is_processing() == false)
 	_check("注册 NPC 返回 true", bus.register_target("npc_a", npc) == true)
 	_check("重复 id 注册返回 false", bus.register_target("npc_a", npc) == false)
 	_check("空 id 注册返回 false", bus.register_target("", npc) == false)
@@ -309,6 +310,9 @@ func _test_speaker() -> void:
 	bus.send_hint("npc_a", "wait")
 	_check("bus 的 hint 能驱动扬声器播放", int(speaker.get_state().get("play_count", 0)) == 2)
 
+	speaker.from_dict({"play_count": -5})
+	_check("扬声器 from_dict 把负 play_count 夹到 0", int(speaker.get_state().get("play_count", -1)) == 0)
+
 	_free_node(bus)
 	_free_node(speaker)
 	_free_node(npc)
@@ -334,6 +338,14 @@ func _test_bad_inputs() -> void:
 	_check("普通 Node 不能开灯", bus.set_indicator("plain", true) == false)
 	_check("普通 Node 不能开门", bus.open_door("plain") == false)
 	_free_node(plain)
+
+	# 注册后被释放的目标：get_targets 应清掉，动作安全失败。
+	var stale := Node.new()
+	root.add_child(stale)
+	bus.register_target("stale", stale)
+	stale.free()
+	_check("失效目标从 get_targets 清理", not bus.get_targets().has("stale"))
+	_check("失效目标动作安全失败", bus.send_hint("stale", "follow") == false)
 
 	_free_node(bus)
 
@@ -401,6 +413,7 @@ func _test_demo_scene() -> void:
 		targets.has("npc_real") and targets.has("npc_imaginary")
 		and targets.has("light_a") and targets.has("door_a"))
 	_check("demo 没有把扬声器误注册成目标", targets.size() == 4)
+	_check("demo autoplay 时 bus 处理帧", demo.is_processing() == true)
 	_check("demo 初始 npc_real 为 IDLE",
 		String(((state.get("npcs", {}) as Dictionary).get("npc_real", {})).get("state", "")) == "IDLE")
 

@@ -106,7 +106,8 @@ func set_door_target(node: Node) -> void:
 	_door_target = node
 
 
-## 接受一条引导提示。未知提示 / 没有可走路径时返回 false 并发 needs_hint。
+## 接受一条引导提示。未知提示 / 没有可走路径时返回 false 并发 needs_hint；
+## FOLLOW 中收到未知提示只请求提示，不打断当前移动。
 func on_hint(text: String) -> bool:
 	var hint := text.strip_edges()
 	if hint.is_empty():
@@ -208,9 +209,6 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(data: Dictionary) -> void:
-	if not data is Dictionary:
-		push_warning("GuideableNpc: from_dict 需要 Dictionary，已忽略")
-		return
 	if data.has("id"):
 		var id_value = data["id"]
 		if id_value is String:

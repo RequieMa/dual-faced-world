@@ -65,15 +65,21 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(data: Dictionary) -> void:
-	if not data is Dictionary:
-		push_warning("SpeakerBeacon: from_dict 需要 Dictionary，已忽略")
-		return
-	if data.has("id") and data["id"] is String:
-		speaker_id = data["id"]
-	if data.has("last_text") and data["last_text"] is String:
-		_last_text = data["last_text"]
-	if data.has("play_count") and (data["play_count"] is int or data["play_count"] is float):
-		_play_count = int(data["play_count"])
+	if data.has("id"):
+		if data["id"] is String:
+			speaker_id = data["id"]
+		else:
+			push_warning("SpeakerBeacon: from_dict 的 id 类型不符，已忽略")
+	if data.has("last_text"):
+		if data["last_text"] is String:
+			_last_text = data["last_text"]
+		else:
+			push_warning("SpeakerBeacon: from_dict 的 last_text 类型不符，已忽略")
+	if data.has("play_count"):
+		if data["play_count"] is int or data["play_count"] is float:
+			_play_count = maxi(0, int(data["play_count"]))
+		else:
+			push_warning("SpeakerBeacon: from_dict 的 play_count 类型不符，已忽略")
 	_refresh_visual()
 
 

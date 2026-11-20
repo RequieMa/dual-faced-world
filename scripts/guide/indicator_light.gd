@@ -60,13 +60,16 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(data: Dictionary) -> void:
-	if not data is Dictionary:
-		push_warning("IndicatorLight: from_dict 需要 Dictionary，已忽略")
-		return
-	if data.has("id") and data["id"] is String:
-		light_id = data["id"]
-	if data.has("on") and data["on"] is bool:
-		_on = data["on"]
+	if data.has("id"):
+		if data["id"] is String:
+			light_id = data["id"]
+		else:
+			push_warning("IndicatorLight: from_dict 的 id 类型不符，已忽略")
+	if data.has("on"):
+		if data["on"] is bool:
+			_on = data["on"]
+		else:
+			push_warning("IndicatorLight: from_dict 的 on 类型不符，已忽略")
 	_apply_visual()
 
 
