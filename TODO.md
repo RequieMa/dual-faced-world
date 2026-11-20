@@ -26,6 +26,8 @@
 ## 工程
 
 - [x] `integrated_sim` Phase 1（Issue #3：只读回放，`scenes/integrated_sim.tscn`）
-- [ ] `integrated_sim` Phase 2（Issue #6：实时推进、道具拖拽、live 因果链）
+- [x] `integrated_sim` Phase 2（Issue #6：实时推进、道具拖拽、live 因果链）
+- [x] 解谜实验室 demo（`scenes/puzzle_lab.tscn`：8 种常规解谜类型，程序化占位美术）
+- [ ] 按 `docs/PUZZLE_LAB.md` 的清单把解谜实验室的占位美术换成 CC0 素材（UI / 图标 / 音效 / 家具 / 字体）
 - [ ] Phase 1 完成后评估 → `release`；通过端到端测试后 `release → main` 并打 `v0.1.0`
 - [ ] 评估是否把 `godot-bridge` 的 `godot_*` 工具稳定用于 Worker preset（首个真实工单验证）

@@ -1,0 +1,35 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/puzzle_lab.gd" id="1_lab"]
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 1
+background_color = Color(0.035, 0.045, 0.065, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.42, 0.48, 0.60, 1)
+ambient_light_energy = 0.85
+
+[sub_resource type="CameraAttributesPractical" id="CamAttr"]
+dof_blur_far_enabled = false
+
+[node name="PuzzleLab" type="Node3D"]
+script = ExtResource("1_lab")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
+camera_attributes = SubResource("CamAttr")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(-4.2, 8.2, 12.5)
+rotation_degrees = Vector3(-29.5, 0, 0)
+current = true
+fov = 55.0
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -38, 0)
+light_energy = 1.2
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-18, 140, 0)
+light_energy = 0.55
+light_color = Color(0.62, 0.72, 1, 1)
