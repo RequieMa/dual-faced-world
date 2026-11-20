@@ -51,7 +51,7 @@ func _process(delta: float) -> void:
 			break
 		_apply_demo_step(step)
 		_demo_index += 1
-	# 仅 demo_autoplay 时由 bus 代宿主 tick 已注册的 NPC；生产环境由 GameRoot 调 tick，
+	# 仅 demo_autoplay 时由 bus 代宿主 tick 已注册的 NPC；生产环境由宿主（W12）调 tick，
 	# 避免两边同时 tick 导致移动速度翻倍。
 	for target_id in _targets.keys():
 		var node = _targets[target_id]
@@ -81,6 +81,7 @@ func unregister_target(target_id: String) -> void:
 
 
 ## 已注册 id，排序后返回，保证 get_state / 测试输出稳定。
+## 会顺手移除已释放的目标，因此调用后失效 id 不再出现。
 func get_targets() -> Array:
 	# 目标可能在注册后被释放；这里顺手清掉失效条目，避免 get_state 继续列出幽灵 id。
 	for target_id in _targets.keys():

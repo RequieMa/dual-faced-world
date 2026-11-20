@@ -122,7 +122,6 @@ func _test_setup_and_groups() -> void:
 	_check("中文别名「等待」-> WAIT", npc.on_hint("等待") == true and _state_name(npc) == "WAIT")
 	_check("中文别名「开门」-> OPEN_DOOR", npc.on_hint("开门") == true and _state_name(npc) == "OPEN_DOOR")
 	npc.setup("npc_d", "stranger")
-	npc.setup("npc_d", "stranger")
 	_check("stranger 归一化为 real", String(npc.get_state().get("group", "")) == "real")
 	npc.setup("npc_e", "unknown-group")
 	_check("未知 group 兜底为 real", String(npc.get_state().get("group", "")) == "real")
@@ -189,8 +188,11 @@ func _test_follow_transition() -> void:
 	npc.tick(0.5)
 	_check("FOLLOW 第一段走到中点", _approx(npc.position, Vector3(1.0, 0.0, 0.0)), str(npc.position))
 	var mid_route: Vector3 = npc.position
+	var mid_index: int = int(npc.get_state().get("waypoint_index", -1))
 	_check("FOLLOW 中重复 follow 幂等", npc.on_hint("follow") == true and _state_name(npc) == "FOLLOW")
-	_check("FOLLOW 中重复 follow 不重置进度", _approx(npc.position, mid_route))
+	_check("FOLLOW 中重复 follow 不重置进度",
+		_approx(npc.position, mid_route)
+		and int(npc.get_state().get("waypoint_index", -1)) == mid_index)
 	npc.tick(0.5)
 	_check("FOLLOW 走到第一个路点", _approx(npc.position, Vector3(2.0, 0.0, 0.0)), str(npc.position))
 	_check("第二段尚未到达", arrived.is_empty())

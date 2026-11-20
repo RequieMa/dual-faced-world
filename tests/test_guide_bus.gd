@@ -228,6 +228,10 @@ func _test_indicator() -> void:
 	_check("不存在的灯返回 false", bus.set_indicator("no_light", true) == false)
 	_check("把 NPC 当灯设置返回 false", bus.set_indicator("npc_not_a_light", true) == false)
 
+	light.from_dict({"id": 123, "on": "bad"})
+	_check("灯 from_dict 忽略类型不符字段",
+		String(light.get_state().get("id", "")) == "light_a" and light.is_on() == false)
+
 	_free_node(bus)
 	_free_node(light)
 	_free_node(npc)
@@ -268,6 +272,11 @@ func _test_door() -> void:
 	_check("不存在的门返回 false", bus.open_door("no_door") == false)
 	_check("不存在的门不发信号", opened.size() == 1)
 	_check("把 NPC 当门打开返回 false", bus.open_door("npc_not_a_door") == false)
+
+	door.from_dict({"open": false})
+	door.from_dict({"id": 123, "open": "bad"})
+	_check("门 from_dict 忽略类型不符字段",
+		String(door.get_state().get("id", "")) == "door_a" and door.is_open() == false)
 
 	_free_node(bus)
 	_free_node(door)
