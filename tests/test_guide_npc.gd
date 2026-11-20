@@ -215,6 +215,16 @@ func _test_follow_to_wait() -> void:
 	npc.tick(1.0)
 	_check("切到 WAIT 后停止移动", _approx(npc.position, frozen))
 
+	# 中途从 FOLLOW 改 open_door 应沿用当前路点进度，而不是倒退回起点。
+	npc.on_hint("follow")
+	npc.tick(1.0)
+	var mid: Vector3 = npc.position
+	_check("FOLLOW -> OPEN_DOOR 返回 true", npc.on_hint("open_door") == true)
+	_check("FOLLOW -> OPEN_DOOR 不倒退位置", _approx(npc.position, mid))
+	_check("FOLLOW -> OPEN_DOOR 状态为 OPEN_DOOR", _state_name(npc) == "OPEN_DOOR")
+	npc.tick(0.5)
+	_check("FOLLOW -> OPEN_DOOR 继续向前走", npc.position.x > mid.x)
+
 	_free_node(npc)
 
 
