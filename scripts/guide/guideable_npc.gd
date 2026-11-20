@@ -345,12 +345,14 @@ func _build_visual() -> void:
 	_body.mesh = mesh
 	_body_material = StandardMaterial3D.new()
 	_body.material_override = _body_material
+	# 胶囊以中心为原点；抬高半个身位，让脚踩在地面上（逻辑 position 仍是地面坐标）。
+	_body.position = Vector3(0.0, 0.7, 0.0)
 	add_child(_body)
 
 	_name_label = Label3D.new()
 	_name_label.font_size = 32
 	_name_label.pixel_size = 0.005
-	_name_label.position = Vector3(0.0, 1.15, 0.0)
+	_name_label.position = Vector3(0.0, 1.65, 0.0)
 	_name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	add_child(_name_label)
 
