@@ -1,5 +1,5 @@
 {
-  "$comment": "dialogues.json：两类对话框（路人 / 朋友）的台词。group 与两组人设定对应，先取 real/imaginary 与 friend/stranger 两套别名。",
+  "$comment": "dialogues.json：两类对话框（路人 / 朋友）的台词。group 只接受规范值 real / imaginary；friend / stranger 等别名必须由 PersonGroup.normalize() 处理，不能直接写进数据。",
   "type": "object",
   "required": ["dialogues"],
   "properties": {
@@ -10,7 +10,7 @@
         "required": ["id", "group", "lines"],
         "properties": {
           "id": { "type": "string" },
-          "group": { "type": "string", "enum": ["real", "imaginary", "friend", "stranger"] },
+          "group": { "type": "string", "enum": ["real", "imaginary"] },
           "lines": {
             "type": "array",
             "items": {

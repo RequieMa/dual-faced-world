@@ -25,6 +25,9 @@ func _initialize() -> void:
 	_test_read_errors()
 	_test_schema_valid()
 	_test_schema_errors()
+	_test_schema_types()
+	_test_enum_and_bounds()
+	_test_definition_error_signal()
 	_test_errors_are_reset()
 	_cleanup()
 	_report()
@@ -139,7 +142,7 @@ func _test_schema_valid() -> void:
 	_check("返回的相机配置可读", data.has("cameras") and (data["cameras"] as Dictionary).has("C1"))
 
 	var dialogues := _write("dialogues.json",
-		"{\"dialogues\": [{\"id\": \"d1\", \"group\": \"friend\", \"lines\": [{\"speaker\": \"甲\", \"text\": \"你好\"}]}]}")
+		"{\"dialogues\": [{\"id\": \"d1\", \"group\": \"imaginary\", \"lines\": [{\"speaker\": \"甲\", \"text\": \"你好\"}]}]}")
 	var dialogue_data: Dictionary = loader.load_json(dialogues, SCHEMA_DIR + "dialogues.schema.json")
 	_check("对话配置通过 schema 校验（嵌套数组/对象）",
 		not dialogue_data.is_empty() and loader.last_errors.is_empty(), str(loader.last_errors))
@@ -174,6 +177,72 @@ func _test_schema_errors() -> void:
 		_write_surveillance(true), SCHEMA_DIR + "no_such.schema.json")
 	_check("schema 文件不存在时返回空字典", data_with_missing_schema.is_empty())
 	_check("schema 缺失记录错误", not missing_schema_loader.last_errors.is_empty())
+
+
+func _test_schema_types() -> void:
+	var loader = _loader()
+	var int_schema := _write("schema_int.json",
+		"{\"type\": \"object\", \"required\": [\"n\"], \"properties\": {\"n\": {\"type\": \"integer\"}}}")
+	var int_ok := _write("int_ok.json", "{\"n\": 3}")
+	_check("integer 接受 JSON 里的整数值（解析为 float）",
+		not loader.load_json(int_ok, int_schema).is_empty() and loader.last_errors.is_empty(),
+		str(loader.last_errors))
+	_check("integer 拒绝小数", loader.load_json(_write("int_bad.json", "{\"n\": 3.5}"), int_schema).is_empty())
+
+	var bool_schema := _write("schema_bool.json",
+		"{\"type\": \"object\", \"properties\": {\"flag\": {\"type\": \"boolean\"}}}")
+	_check("boolean 接受 true",
+		not loader.load_json(_write("bool_ok.json", "{\"flag\": true}"), bool_schema).is_empty())
+	_check("boolean 拒绝字符串",
+		loader.load_json(_write("bool_bad.json", "{\"flag\": \"yes\"}"), bool_schema).is_empty())
+
+	var any_schema := _write("schema_any.json",
+		"{\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"any\"}}}")
+	_check("any 接受任意类型",
+		not loader.load_json(_write("any_ok.json", "{\"x\": [1, 2]}"), any_schema).is_empty())
+
+	var closed_schema := _write("schema_closed.json",
+		"{\"type\": \"object\", \"additional_properties\": false}")
+	_check("additional_properties=false 拒绝未知字段",
+		loader.load_json(_write("closed_bad.json", "{\"extra\": 1}"), closed_schema).is_empty())
+	var open_schema := _write("schema_open.json",
+		"{\"type\": \"object\", \"additional_properties\": true}")
+	_check("additional_properties=true 允许未知字段",
+		not loader.load_json(_write("open_ok.json", "{\"extra\": 1}"), open_schema).is_empty())
+
+	var typo_schema := _write("schema_typo.json",
+		"{\"type\": \"object\", \"properties\": {\"x\": {\"type\": \"integerr\"}}}")
+	var typo_data: Dictionary = loader.load_json(_write("typo.json", "{\"x\": 1}"), typo_schema)
+	_check("schema 里的未知 type 会被判错（防拼写失效）",
+		typo_data.is_empty() and _has_error_containing(loader, "integerr"), str(loader.last_errors))
+
+
+func _test_enum_and_bounds() -> void:
+	var loader = _loader()
+	var schema := _write("schema_enum.json",
+		"{\"type\": \"object\", \"properties\": {" +
+		"\"g\": {\"type\": \"string\", \"enum\": [\"real\", \"imaginary\"]}, " +
+		"\"n\": {\"type\": \"number\", \"min\": 1, \"max\": 4}}}")
+	_check("enum 接受合法值",
+		not loader.load_json(_write("enum_ok.json", "{\"g\": \"real\", \"n\": 2}"), schema).is_empty())
+	_check("enum 拒绝非法值",
+		loader.load_json(_write("enum_bad.json", "{\"g\": \"friend\", \"n\": 2}"), schema).is_empty())
+	_check("min 拒绝过小值",
+		loader.load_json(_write("min_bad.json", "{\"g\": \"real\", \"n\": 0}"), schema).is_empty())
+	_check("max 拒绝过大值",
+		loader.load_json(_write("max_bad.json", "{\"g\": \"real\", \"n\": 5}"), schema).is_empty())
+	_check("边界值通过",
+		not loader.load_json(_write("bound_ok.json", "{\"g\": \"real\", \"n\": 4}"), schema).is_empty())
+
+
+func _test_definition_error_signal() -> void:
+	var loader = _loader()
+	var signals: Array = []
+	loader.definition_error.connect(func(message: String) -> void: signals.append(message))
+	loader.load_json(_write("bad_signal.json", "{oops"))
+	_check("失败时发出 definition_error", signals.size() == 1, str(signals))
+	loader.load_json(_write("ok_signal.json", "{\"ok\": true}"))
+	_check("成功时不发 definition_error", signals.size() == 1, str(signals))
 
 
 func _test_errors_are_reset() -> void:

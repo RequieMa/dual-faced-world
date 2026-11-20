@@ -9,6 +9,10 @@ extends RefCounted
 
 signal definition_error(message: String)
 
+## 轻量 schema 支持的 type 集合；拼错（例如 integerr）会被判成 schema 错误，
+## 而不是静默放宽校验。
+const KNOWN_TYPES: Array[String] = ["any", "object", "array", "string", "number", "integer", "boolean"]
+
 var last_errors: Array[String] = []
 
 
@@ -72,6 +76,9 @@ func _validate_value(value: Variant, schema: Dictionary, path: String, errors: A
 		return
 
 	var expected := String(schema.get("type", "any"))
+	if not KNOWN_TYPES.has(expected):
+		errors.append(_describe(path, "schema 使用了未知 type: %s" % expected))
+		return
 	if not _type_matches(value, expected):
 		errors.append(_describe(path, "类型应为 %s，实际是 %s" % [expected, _type_name(value)]))
 		return
@@ -86,7 +93,12 @@ func _validate_value(value: Variant, schema: Dictionary, path: String, errors: A
 			if object.has(key):
 				_validate_value(object[key], properties[key], _join(path, String(key)), errors)
 		var additional: Variant = schema.get("additional_properties")
-		if additional is Dictionary:
+		if additional is bool:
+			if not additional:
+				for key in object.keys():
+					if not properties.has(key):
+						errors.append(_describe(_join(path, String(key)), "不允许的额外字段"))
+		elif additional is Dictionary:
 			for key in object.keys():
 				if properties.has(key):
 					continue
@@ -124,11 +136,17 @@ func _type_matches(value: Variant, expected: String) -> bool:
 		"number":
 			return typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT
 		"integer":
-			return typeof(value) == TYPE_INT
+			# JSON 解析出的数字在 Godot 里统一是 float（3 也是 3.0），
+			# 这里接受「整数值的 float」，否则 schema 写 integer 永远不通过。
+			if typeof(value) == TYPE_INT:
+				return true
+			if typeof(value) == TYPE_FLOAT:
+				return is_equal_approx(value, roundf(value))
+			return false
 		"boolean":
 			return typeof(value) == TYPE_BOOL
 		_:
-			return true
+			return false
 
 
 func _type_name(value: Variant) -> String:
