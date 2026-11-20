@@ -405,10 +405,13 @@ func _test_demo_scene() -> void:
 		String(((state.get("npcs", {}) as Dictionary).get("npc_real", {})).get("state", "")) == "IDLE")
 
 	# 直接推进 demo 自己的时间轴（不必等真实帧），验证自动播放确实驱动了三件套。
+	var start_position: Vector3 = ((state.get("npcs", {}) as Dictionary).get("npc_real", {})).get("position", Vector3.ZERO)
 	demo._process(0.3)
 	var after_first: Dictionary = demo.get_state()
 	_check("demo 第一拍后 npc_real 进入 FOLLOW",
 		String(((after_first.get("npcs", {}) as Dictionary).get("npc_real", {})).get("state", "")) == "FOLLOW")
+	var moved_position: Vector3 = ((after_first.get("npcs", {}) as Dictionary).get("npc_real", {})).get("position", Vector3.ZERO)
+	_check("demo 会 tick NPC 让它们真的移动", moved_position.distance_to(start_position) > 0.1, str(moved_position))
 
 	demo._process(0.3)
 	demo._process(2.5)
@@ -421,9 +424,14 @@ func _test_demo_scene() -> void:
 	_check("demo 自动打开门",
 		bool((after_door.get("doors", {}) as Dictionary).get("door_a", false)) == true)
 
-	# 再让场景自己跑 60 帧：验收要求 headless 下不报错。
+	# 再让场景自己跑 60 帧：验收要求 headless 下不报错，同时 NPC 应走到终点。
 	for _index in range(60):
 		demo._process(1.0 / 60.0)
 	_check("demo 跑 60 帧后仍在场景树里", demo.is_inside_tree())
+	var finished: Dictionary = demo.get_state()
+	_check("demo 跑 60 帧后 npc_real 到达并回到 WAIT",
+		String(((finished.get("npcs", {}) as Dictionary).get("npc_real", {})).get("state", "")) == "WAIT")
+	_check("demo 跑 60 帧后 npc_imaginary 到达并回到 WAIT",
+		String(((finished.get("npcs", {}) as Dictionary).get("npc_imaginary", {})).get("state", "")) == "WAIT")
 
 	_free_node(demo)

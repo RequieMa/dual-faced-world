@@ -50,6 +50,11 @@ func _process(delta: float) -> void:
 			break
 		_apply_demo_step(step)
 		_demo_index += 1
+	# demo 场景没有别的宿主，由 bus 代替宿主每帧 tick 已注册的 NPC。
+	for target_id in _targets.keys():
+		var node = _targets[target_id]
+		if is_instance_valid(node) and node.has_method("tick"):
+			node.tick(delta)
 
 
 # --- 公开接口（W0 契约） -------------------------------------------------------
