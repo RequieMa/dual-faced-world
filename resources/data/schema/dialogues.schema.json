@@ -1,0 +1,29 @@
+{
+  "$comment": "dialogues.json：两类对话框（路人 / 朋友）的台词。group 只接受规范值 real / imaginary；friend / stranger 等别名必须由 PersonGroup.normalize() 处理，不能直接写进数据。",
+  "type": "object",
+  "required": ["dialogues"],
+  "properties": {
+    "dialogues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "group", "lines"],
+        "properties": {
+          "id": { "type": "string" },
+          "group": { "type": "string", "enum": ["real", "imaginary"] },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["speaker", "text"],
+              "properties": {
+                "speaker": { "type": "string" },
+                "text": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

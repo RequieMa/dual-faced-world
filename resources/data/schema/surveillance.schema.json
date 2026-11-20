@@ -1,0 +1,18 @@
+{
+  "$comment": "surveillance.json：机位 -> 停留时长 / 冷却时长（秒）。数值由策划在真实试玩后定，代码里不写死。",
+  "type": "object",
+  "required": ["cameras"],
+  "properties": {
+    "cameras": {
+      "type": "object",
+      "additional_properties": {
+        "type": "object",
+        "required": ["dwell", "cooldown"],
+        "properties": {
+          "dwell": { "type": "number", "min": 0 },
+          "cooldown": { "type": "number", "min": 0 }
+        }
+      }
+    }
+  }
+}
