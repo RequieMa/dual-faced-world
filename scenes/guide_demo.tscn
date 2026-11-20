@@ -1,0 +1,148 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scripts/guide/guide_bus.gd" id="1_bus"]
+[ext_resource type="Script" path="res://scripts/guide/guideable_npc.gd" id="2_npc"]
+[ext_resource type="Script" path="res://scripts/guide/speaker_beacon.gd" id="3_speaker"]
+[ext_resource type="Script" path="res://scripts/guide/indicator_light.gd" id="4_light"]
+[ext_resource type="Script" path="res://scripts/guide/guideable_door.gd" id="5_door"]
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 1
+background_color = Color(0.04, 0.05, 0.07, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.42, 0.48, 0.6, 1)
+ambient_light_energy = 0.8
+
+[sub_resource type="StandardMaterial3D" id="GroundMat"]
+albedo_color = Color(0.12, 0.14, 0.18, 1)
+roughness = 0.9
+
+[sub_resource type="PlaneMesh" id="GroundMesh"]
+material = SubResource("GroundMat")
+size = Vector2(20, 20)
+
+[sub_resource type="StandardMaterial3D" id="FrameMat"]
+albedo_color = Color(0.24, 0.26, 0.3, 1)
+
+[sub_resource type="BoxMesh" id="FrameMesh"]
+material = SubResource("FrameMat")
+size = Vector3(0.14, 2.2, 0.14)
+
+[node name="GuideDemo" type="Node"]
+script = ExtResource("1_bus")
+auto_register_targets = true
+demo_autoplay = true
+demo_steps = [{
+"at": 0.2,
+"action": "hint",
+"id": "npc_real",
+"text": "follow"
+}, {
+"at": 0.5,
+"action": "hint",
+"id": "npc_imaginary",
+"text": "follow"
+}, {
+"at": 3.0,
+"action": "indicator",
+"id": "light_a",
+"on": true
+}, {
+"at": 5.0,
+"action": "door",
+"id": "door_a"
+}, {
+"at": 7.0,
+"action": "indicator",
+"id": "light_a",
+"on": false
+}, {
+"at": 9.0,
+"action": "hint",
+"id": "npc_real",
+"text": "wait"
+}, {
+"at": 10.0,
+"action": "hint",
+"id": "npc_imaginary",
+"text": "wait"
+}]
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="Environment" type="WorldEnvironment" parent="World"]
+environment = SubResource("Env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="World"]
+rotation_degrees = Vector3(-52, -38, 0)
+light_energy = 1.1
+
+[node name="FillLight" type="DirectionalLight3D" parent="World"]
+rotation_degrees = Vector3(-18, 140, 0)
+light_energy = 0.55
+
+[node name="Camera3D" type="Camera3D" parent="World"]
+position = Vector3(0, 7.5, 11)
+rotation_degrees = Vector3(-30, 0, 0)
+fov = 52.0
+current = true
+
+[node name="Ground" type="MeshInstance3D" parent="World"]
+mesh = SubResource("GroundMesh")
+
+[node name="NpcReal" type="Node3D" parent="World"]
+position = Vector3(-4, 0, 2)
+script = ExtResource("2_npc")
+npc_id = "npc_real"
+group = "real"
+route = [Vector3(-4, 0, 2), Vector3(-1.5, 0, -0.5), Vector3(-1.5, 0, -3.2)]
+speed = 2.0
+
+[node name="NpcImaginary" type="Node3D" parent="World"]
+position = Vector3(4, 0, 2)
+script = ExtResource("2_npc")
+npc_id = "npc_imaginary"
+group = "imaginary"
+route = [Vector3(4, 0, 2), Vector3(1.5, 0, -0.5), Vector3(1.5, 0, -3.2)]
+speed = 2.0
+
+[node name="Speaker" type="Node3D" parent="World"]
+position = Vector3(-3.5, 1.2, 4)
+script = ExtResource("3_speaker")
+speaker_id = "speaker_a"
+
+[node name="Indicator" type="Node3D" parent="World"]
+position = Vector3(3.5, 1.2, 4)
+script = ExtResource("4_light")
+light_id = "light_a"
+
+[node name="DoorFrameLeft" type="MeshInstance3D" parent="World"]
+position = Vector3(-0.67, 1.1, -5)
+mesh = SubResource("FrameMesh")
+
+[node name="DoorFrameRight" type="MeshInstance3D" parent="World"]
+position = Vector3(0.67, 1.1, -5)
+mesh = SubResource("FrameMesh")
+
+[node name="GuideableDoor" type="Node3D" parent="World"]
+position = Vector3(0, 0, -5)
+script = ExtResource("5_door")
+door_id = "door_a"
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Title" type="Label" parent="UI"]
+offset_left = 24.0
+offset_top = 20.0
+offset_right = 640.0
+offset_bottom = 52.0
+theme_override_font_sizes/font_size = 22
+text = "W2 引导演示：扬声器提示 / 指示灯 / 开门 → 可响应 NPC"
+
+[node name="Hint" type="Label" parent="UI"]
+offset_left = 24.0
+offset_top = 56.0
+offset_right = 680.0
+offset_bottom = 84.0
+theme_override_colors/font_color = Color(0.72, 0.78, 0.88, 1)
+text = "自动播放：两位 NPC 收到 follow 后走到门前，灯与门由 GuideBus 驱动。"
