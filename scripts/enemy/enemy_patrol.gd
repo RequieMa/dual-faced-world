@@ -19,6 +19,8 @@ const TIME_EPSILON := 0.000001
 ## 重复 waypoint 理论上会让 while 原地打转；折叠后仍留一道保险。
 const MAX_STEPS_PER_TICK := 1000
 ## 危险阻挡的路径采样步长：大 delta 时也不能一步跨进新出现的危险区。
+## 采样语义：0.1m 步长保证默认半径（>= 0.5m）的危险不会在常规位移下被跳过；
+## 半径 < 0.05m，或单段位移 > 25.6m（MAX_HAZARD_PROBES * 步长）时步长会自适应变粗。
 const HAZARD_PROBE_STEP_M := 0.1
 const MAX_HAZARD_PROBES := 256
 
@@ -158,6 +160,8 @@ func set_facing(direction: Vector3) -> void:
 
 ## 接线危险源：Object 需提供 blocking_hazards_at(position) -> Array；
 ## 也接受 Callable(position) -> Array/String（空 = 未被挡）。
+## source 每个 tick 会被路径采样高频调用（最多 MAX_HAZARD_PROBES 次/段），
+## 必须是纯查询、轻量；不要在查询里改游戏状态。
 ## 换源会清空阻挡记录，下一次 tick 按新源重新发 blocked_by_hazard。
 func set_hazard_source(source: Variant) -> void:
 	_hazard_source = source
@@ -239,6 +243,7 @@ func _set_blocking_ids(ids: Array) -> void:
 
 
 ## 沿 origin → origin + direction * distance 采样，返回第一个被危险挡住的位置。
+## 停在第一个「已进入危险」的采样点，因此最多深入危险区一个采样步长（默认 0.1m）。
 ## 大 delta 时按 MAX_HAZARD_PROBES 自适应放大步长，保证采样次数有上限。
 func _first_blocker_on_path(origin: Vector3, direction: Vector3, distance: float) -> Dictionary:
 	if distance <= TIME_EPSILON:

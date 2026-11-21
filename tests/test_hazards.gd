@@ -30,13 +30,29 @@ class FakeCameraSession:
 func _initialize() -> void:
 	_check("存在 scripts/hazards/hazard_effects.gd", ResourceLoader.exists(HAZARD_PATH))
 	_check("存在 scripts/hazards/blind_zone.gd", ResourceLoader.exists(BLIND_PATH))
+	_check("存在 scripts/enemy/enemy_patrol.gd（联调用）", ResourceLoader.exists(ENEMY_PATH))
 
 
 func _process(_delta: float) -> bool:
 	if _started:
 		return false
 	_started = true
-	if not ResourceLoader.exists(HAZARD_PATH) or not ResourceLoader.exists(BLIND_PATH):
+	if (not ResourceLoader.exists(HAZARD_PATH) or not ResourceLoader.exists(BLIND_PATH)
+			or not ResourceLoader.exists(ENEMY_PATH)):
+		_report()
+		return false
+	# 存在性之外还要确认能解析/实例化：语法错误时 load() 会返回 null，
+	# 只查文件存在会静默少跑用例并误报 PASS。
+	var hazard_script = load(HAZARD_PATH)
+	var blind_script = load(BLIND_PATH)
+	var enemy_script = load(ENEMY_PATH)
+	_check("hazard_effects.gd 可加载且可实例化",
+		hazard_script != null and hazard_script.can_instantiate())
+	_check("blind_zone.gd 可加载且可实例化",
+		blind_script != null and blind_script.can_instantiate())
+	_check("enemy_patrol.gd 可加载且可实例化（联调用）",
+		enemy_script != null and enemy_script.can_instantiate())
+	if hazard_script == null or blind_script == null or enemy_script == null:
 		_report()
 		return false
 	_test_trigger_and_end()

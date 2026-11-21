@@ -44,6 +44,17 @@ func _process(_delta: float) -> bool:
 	if not ResourceLoader.exists(CONE_PATH) or not ResourceLoader.exists(ENEMY_PATH):
 		_report()
 		return false
+	# 存在性之外还要确认能解析/实例化：语法错误时 load() 会返回 null，
+	# 只查文件存在会静默少跑用例并误报 PASS。
+	var cone_script = load(CONE_PATH)
+	var enemy_script = load(ENEMY_PATH)
+	_check("vision_cone.gd 可加载且可实例化",
+		cone_script != null and cone_script.can_instantiate())
+	_check("enemy_patrol.gd 可加载且可实例化",
+		enemy_script != null and enemy_script.can_instantiate())
+	if cone_script == null or enemy_script == null:
+		_report()
+		return false
 	_test_cone_unconfigured()
 	_test_cone_geometry()
 	_test_cone_orientation_is_live()
@@ -59,6 +70,7 @@ func _process(_delta: float) -> bool:
 	_test_patrol_blocked_by_hazard()
 	_test_patrol_blocked_with_callable_source()
 	_test_patrol_does_not_tunnel_into_hazard()
+	_test_patrol_dedupes_hazard_ids()
 	_test_patrol_static_guard()
 	_test_patrol_node_target()
 	_test_patrol_state()
@@ -336,6 +348,25 @@ func _test_patrol_does_not_tunnel_into_hazard() -> void:
 	patrol.free()
 
 
+func _test_patrol_dedupes_hazard_ids() -> void:
+	# 同一个 source 在同一次查询里返回重复 id 时，只按 id 发一次信号。
+	var patrol = _make_patrol([Vector3(0, 0, 0), Vector3(10, 0, 0)], 2.0)
+	var source := FakeHazardSource.new()
+	source.origin = Vector3.ZERO
+	source.radius = 1.0
+	source.active = ["H1", "H1", "H2"]
+	patrol.set_hazard_source(source)
+	var blocked: Array = []
+	patrol.blocked_by_hazard.connect(func(hazard_id: String) -> void: blocked.append(hazard_id))
+
+	patrol.tick(0.1)
+	_check("重复 hazard id 去重后只发 H1、H2 各一次",
+		blocked.size() == 2 and String(blocked[0]) == "H1" and String(blocked[1]) == "H2")
+	patrol.tick(0.1)
+	_check("持续被挡仍不重复发信号", blocked.size() == 2)
+	patrol.free()
+
+
 func _test_patrol_static_guard() -> void:
 	# 单 waypoint 的站桩守卫没有移动方向，需要显式朝向才能形成视野。
 	var guard = _make_patrol([Vector3(0, 0, 0)], 0.0)
@@ -347,12 +378,25 @@ func _test_patrol_static_guard() -> void:
 
 func _test_patrol_node_target() -> void:
 	# 未入树的 Node3D 调 get_global_position() 会报错并返回原点；应退回本地 position。
+	# 额外用身后目标锁住修复：旧逻辑会把它误判到原点（可见）。
 	var patrol = _make_patrol([Vector3(0, 0, 0), Vector3(10, 0, 0)], 2.0)
 	var marker := Node3D.new()
 	marker.position = Vector3(5, 0, 0)
-	_check("未入树 Node3D 目标按 position 判定", patrol.sees(marker))
-	patrol.free()
+	_check("未入树 Node3D 前方目标按 position 判定", patrol.sees(marker))
+	marker.position = Vector3(-5, 0, 0)
+	_check("未入树 Node3D 身后目标不可见", not patrol.sees(marker))
 	marker.free()
+
+	# 入树目标必须用 global_position（父节点带偏移时不能退回本地 position）。
+	var parent := Node3D.new()
+	root.add_child(parent)
+	parent.position = Vector3(10, 0, 0)
+	var child := Node3D.new()
+	child.position = Vector3(-5, 0, 0)
+	parent.add_child(child)
+	_check("入树 Node3D 目标按 global_position 判定", patrol.sees(child))
+	parent.free()
+	patrol.free()
 
 
 func _test_patrol_state() -> void:
