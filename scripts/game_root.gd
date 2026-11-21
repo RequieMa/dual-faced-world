@@ -314,6 +314,12 @@ func _current_npc_id() -> String:
 func register_input_actions() -> void:
 	for action in INPUT_ACTIONS:
 		if InputMap.has_action(action):
+			# 宿主动作：存在即接管，不登记所有权；若它还没绑任何键，补一个本模块的键，
+			# 否则 is_action_pressed() 永远为 false。
+			if InputMap.action_get_events(action).is_empty():
+				var existing_event := InputEventKey.new()
+				existing_event.physical_keycode = INPUT_ACTIONS[action]
+				InputMap.action_add_event(action, existing_event)
 			continue
 		InputMap.add_action(action)
 		var input_event := InputEventKey.new()

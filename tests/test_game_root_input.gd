@@ -209,10 +209,34 @@ func _test_scene_input() -> void:
 		and (_game_root.get_level_state().get("camera_mismatches", []) as Array).is_empty(),
 		str(_game_root.get_level_state().get("camera_mismatches", [])))
 
+	# 面板关闭后普通按键仍然生效
+	_check("面板关闭后按键 2 仍可切机位",
+		_dispatch(KEY_2) and String(_game_root.get_state()["camera"]["current"]) == String(cameras[1]),
+		str(_game_root.get_state()["camera"]))
+	_check("Esc 在机位打开时离开",
+		_dispatch(KEY_ESCAPE) and String(_game_root.get_state()["camera"]["current"]) == "",
+		str(_game_root.get_state()["camera"]))
+
 	# 卸载清理
 	_game_root.unregister_input_actions()
 	for action in INPUT_ACTIONS:
 		_check("卸载后动作被清理: " + action, not InputMap.has_action(action))
+
+	# 预置同名动作：GameRoot 不应该删掉不属于自己的动作
+	InputMap.add_action("game_hint_follow")
+	var preset_event := InputEventKey.new()
+	preset_event.physical_keycode = KEY_Y
+	InputMap.action_add_event("game_hint_follow", preset_event)
+	var second := (ResourceLoader.load(SCENE_PATH) as PackedScene).instantiate()
+	second.auto_tick = false
+	root.add_child(second)
+	_check("预置同名动作保留", InputMap.has_action("game_hint_follow"))
+	_check("预置动作不计入 GameRoot 注册列表",
+		not (second.get_state().get("input_actions", []) as Array).has("game_hint_follow"),
+		str(second.get_state().get("input_actions", [])))
+	second.free()
+	_check("第二个 GameRoot 退出后预置动作仍在", InputMap.has_action("game_hint_follow"))
+	InputMap.erase_action("game_hint_follow")
 
 	_game_root.queue_free()
 	_game_root = null
