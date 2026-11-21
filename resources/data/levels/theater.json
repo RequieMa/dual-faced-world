@@ -1,0 +1,22 @@
+{
+  "$comment": "关卡数据：剧院序章。房间 id/名称/类型与 scripts/theater_map.gd 保持一致；热键机位 C1–C4 与 resources/data/surveillance.json 对齐（C5–C9 只在监控墙 demo 里出现）。",
+  "id": "theater",
+  "name": "剧院（序章）",
+  "rooms": [
+    { "id": "stairs", "name": "楼梯", "kind": "normal" },
+    { "id": "corridor", "name": "走廊", "kind": "normal" },
+    { "id": "prop_room", "name": "道具仓", "kind": "blind" },
+    { "id": "lobby", "name": "大厅", "kind": "normal" },
+    { "id": "seating", "name": "观众席", "kind": "normal" },
+    { "id": "stage", "name": "舞台", "kind": "fire" },
+    { "id": "backstage", "name": "后台", "kind": "normal" },
+    { "id": "front_gate", "name": "正门", "kind": "normal" },
+    { "id": "side_gate", "name": "侧门", "kind": "normal" }
+  ],
+  "cameras": [
+    { "id": "C1", "room": "lobby" },
+    { "id": "C2", "room": "seating" },
+    { "id": "C3", "room": "stage" },
+    { "id": "C4", "room": "corridor" }
+  ]
+}

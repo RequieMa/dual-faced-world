@@ -4,6 +4,7 @@
   "required": ["id", "rooms"],
   "properties": {
     "id": { "type": "string" },
+    "name": { "type": "string" },
     "rooms": {
       "type": "array",
       "items": {
@@ -11,7 +12,8 @@
         "required": ["id", "name"],
         "properties": {
           "id": { "type": "string" },
-          "name": { "type": "string" }
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["normal", "blind", "fire"] }
         }
       }
     },
