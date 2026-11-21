@@ -112,6 +112,7 @@ hotfix 合并进 `release` 后，必须把 `release` 回合 `develop`（PR 或 f
 - 直接 push `main` / `develop` / `release`
 - 在 feature 分支上顺手改无关模块
 - 提交 `external-assets/` 内容、`.godot/`、`autoload/`、密钥
+- 给 `external-assets/` 的目录结构加 git 例外：该目录只为 `.gdignore` 保留例外（`external-assets/*` 后接 `!external-assets/.gdignore`，两条顺序不可颠倒），`audio/`、`models/`、`textures/` 的内容与目录结构随文件夹压缩包整体分发/迁移，不靠 git
 - 用 `--no-verify` 跳过 hooks
 - 把 stateDir、日志、截图提交进仓库
 - 在 CI 未绿或 reviewer 仍有阻塞项时合并 PR
