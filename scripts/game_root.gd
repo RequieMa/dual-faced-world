@@ -159,12 +159,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## 按键分发（InputMap 是唯一来源）：测试直接调用它，避免依赖真实输入循环。
-## 面板打开时只响应录像带相关按键，避免后台误切机位/发提示。
+## 面板打开时只响应录像带相关按键与重试，避免后台误切机位/发提示。
 func dispatch_key_event(event: InputEventKey) -> bool:
 	if not event.pressed or event.echo:
 		return false
 	for action in INPUT_ACTIONS:
-		if _tape_open and not (String(action).begins_with("game_tape") or action == "game_close"):
+		if _tape_open and not (String(action).begins_with("game_tape") or action == "game_close" or action == "game_restart"):
 			continue
 		if event.is_action_pressed(action):
 			return handle_action(action)
@@ -632,10 +632,12 @@ func get_tape_state() -> Dictionary:
 ## 到达 = NPC 的 waypoint_index 走完 route 并进入 WAIT；超时 = 本轮失败，按 R 重试。
 ## 分数 = 每轮 100 + 剩余秒数，烧毁摄像头每台 -30（永久烧毁，符合 M16）。
 func start_demo() -> void:
+	if not _npcs.has(DEMO_TARGET_NPC):
+		_fail("demo 目标 NPC %s 不存在" % DEMO_TARGET_NPC)
 	_demo_round = 1
 	_demo_score = 0
 	_demo_phase = "playing"
-	_begin_demo_round()
+	_begin_demo_round(true)
 
 
 func is_demo_active() -> bool:
@@ -654,15 +656,17 @@ func get_demo_state() -> Dictionary:
 	}
 
 
-func _begin_demo_round() -> void:
+func _begin_demo_round(discover_tape: bool = true) -> void:
 	_demo_time_left = DEMO_ROUND_TIME
 	_demo_round_burned = _burned_cameras()
 	_demo_message = "第 %d/%d 轮：按 F 让朋友跟上，带他到门口" % [_demo_round, DEMO_ROUNDS]
 	if _loop_manager.get_round_index() == 0:
 		start_round()
+		reset_for_loop(0.0)
 	else:
 		restart_round(0.0)
-	_discover_next_tape()
+	if discover_tape:
+		_discover_next_tape()
 	_ensure_demo_hud()
 	_refresh_demo_hud()
 
@@ -673,8 +677,10 @@ func _update_demo(delta: float) -> void:
 	_demo_time_left = maxf(0.0, _demo_time_left - delta)
 	_apply_burn_penalty()
 	if _demo_target_arrived():
+		_apply_burn_penalty()  # 结算同帧烧毁
 		_complete_demo_round()
 	elif _demo_time_left <= 0.0:
+		_apply_burn_penalty()  # 超时前烧毁的机位也要结算
 		_demo_fail("超时")
 	_refresh_demo_hud()
 
@@ -711,12 +717,14 @@ func _complete_demo_round() -> void:
 func _demo_fail(reason: String) -> void:
 	_demo_phase = "lost"
 	_demo_message = "本轮失败：%s（按 R 重试）" % reason
+	if _round_active:
+		end_round({"outcome": "timeout"})
 
 
 func _demo_retry() -> void:
 	if _demo_phase == "lost":
 		_demo_phase = "playing"
-		_begin_demo_round()
+		_begin_demo_round(false)  # 重试不额外解锁磁带
 	elif _demo_phase == "won":
 		start_demo()
 

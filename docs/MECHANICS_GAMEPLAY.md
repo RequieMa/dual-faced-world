@@ -45,7 +45,7 @@ godot --path . scenes/main.tscn
 `scenes/main.tscn` 启动即进入 demo（`auto_tick == true` 时 `_ready` 自动 `start_demo()`）：
 
 - **目标**：每轮 60 秒内按 `F` 让 npc_imaginary 跟随并走到门口（route 终点）；到达即本轮成功；
-- **3 轮**；每轮得分 = `100 + 剩余秒数`；烧毁摄像头每台 `−30`（烧毁永久，M16）；
+- **3 轮**；每轮得分 = `100 + ceil(剩余秒数)`；烧毁摄像头每台 `−30`（烧毁永久，M16）；
 - **失败**：超时 → 本轮失败，按 `R` 重试同一轮；**通关**：3 轮完成，按 `R` 重玩；
 - 每轮开始自动解锁一盘磁带给录像带面板（demo 的简化线索获取，正式版应改为场景拾取）；
 - 验收：`tests/test_prologue_demo.gd`（31 条断言：通关、超时重试、烧毁扣分、HUD、磁带解锁）。
@@ -85,6 +85,7 @@ Main (scenes/main.tscn)
 | `start_dialogue(id, group_override = "")` | 转发 `DialogueController.start` |
 | `apply_style(group, enabled)` | 转发 `StyleController.apply_style` |
 | `start_round()` / `end_round(summary) -> bool` / `restart_round(time = 0.0)` | 转发 `LoopManager`，并维护「当前是否有一轮进行中」 |
+| `start_demo()` / `is_demo_active()` / `get_demo_state()` | 可玩 demo：开局、查询阶段、查询轮次/倒计时/得分/文案 |
 | `reset_for_loop(time)` | `LoopManager` 参与者协议：复位摄像头焦点/冷却、NPC、指示灯 |
 | `get_state()` | 聚合 camera / guide / loop / dialogue / style / round_active |
 

@@ -20,7 +20,7 @@ const INPUT_ACTIONS: Array[String] = [
 	"game_camera_off", "game_hint_follow", "game_hint_wait", "game_hint_open",
 	"game_indicator", "game_door", "game_cycle_npc", "game_dialogue",
 	"game_tape", "game_tape_next", "game_tape_prev", "game_tape_forward",
-	"game_tape_back", "game_close",
+	"game_tape_back", "game_close", "game_restart",
 ]
 
 var _failures: Array[String] = []
