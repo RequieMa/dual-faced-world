@@ -209,8 +209,8 @@ func _test_rounds() -> void:
 
 	var camera_state: Dictionary = _game_root.get_camera_session().get_state()
 	_check("重开清空当前机位", camera_state["current"] == "", str(camera_state))
-	# M16 未拍板：契约默认烧毁机位不恢复。
-	_check("重开保留烧毁机位（M16 默认）", _game_root.get_camera_session().is_burned("C2"), str(camera_state))
+	# M16 已拍板（#20）：烧毁的机位永久不恢复。
+	_check("重开保留烧毁机位（M16 已决定）", _game_root.get_camera_session().is_burned("C2"), str(camera_state))
 
 	var npc = _game_root.find_child("NpcReal", true, false)
 	_check("重开复位 NPC 状态", npc != null and String(npc.get_state()["state"]) == "IDLE",

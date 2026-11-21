@@ -28,6 +28,14 @@
 - [x] `integrated_sim` Phase 1（Issue #3：只读回放，`scenes/integrated_sim.tscn`）
 - [x] `integrated_sim` Phase 2（Issue #6：实时推进、道具拖拽、live 因果链）
 - [x] 解谜实验室 demo（`scenes/puzzle_lab.tscn`：8 种常规解谜类型，程序化占位美术）
-- [ ] 按 `docs/PUZZLE_LAB.md` 的清单把解谜实验室的占位美术换成 CC0 素材（UI / 图标 / 音效 / 家具 / 字体）
-- [ ] Phase 1 完成后评估 → `release`；通过端到端测试后 `release → main` 并打 `v0.1.0`
+- [x] W0–W12 机制落地（契约 / 摄像头过载 / 引导 NPC / 两类对话 / 双画风 / 敌人危险 / 循环存档 / 潜行 / 亲身段落 / 集成装配）
+  - 契约：`docs/MECHANICS_CONTRACTS.md`；装配：`docs/MECHANICS_GAMEPLAY.md`；场景：`scenes/game_root.tscn`
+- [x] 设计拍板对齐（Issue #20）：玩法改为「回放」、二段跳默认关、烧毁不恢复 —— 见 `docs/DESIGN_DECISIONS.md`
+  - 数值：摄像头 `dwell` / `cooldown` 已走 `resources/data/surveillance.json`；交互半径、拖拽拾取半径仍是代码常量（后续可抽，见下）
+- [ ] 玩法闭环：把「回放查线索 → 监控引导 → 过载代价 → 重开一轮」接成可玩流程
+  - GameRoot 接玩家输入（切机位 / 发提示 / 开门 / 检查录像带）
+  - 关卡数据 `resources/data/levels/*.json`（房间 / 机位 / 初始状态）
+- [ ] 按 `docs/PUZZLE_LAB.md` 的清单把占位美术换成 CC0 素材（UI / 图标 / 音效 / 家具 / 字体）
+- [ ] 把交互半径 / 拖拽拾取半径等常量抽到数据文件（等真机试玩后再调）
+- [ ] 评估 `develop → release`；通过端到端测试后 `release → main` 并打 `v0.1.0`
 - [ ] 评估是否把 `godot-bridge` 的 `godot_*` 工具稳定用于 Worker preset（首个真实工单验证）

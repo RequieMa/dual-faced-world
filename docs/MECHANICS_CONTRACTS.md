@@ -35,8 +35,8 @@ func to_dict() -> Dictionary
 func from_dict(data: Dictionary) -> void
 
 signal overload_started(camera_id: String)   # 停留超时
-signal overload_finished(camera_id: String)  # 过载结束（烧毁/恢复策略见设计题 M16）
-signal burned(camera_id: String)             # 该机位永久失效（默认策略）
+signal overload_finished(camera_id: String)  # 过载结束（M16 已拍板：烧毁永久，不恢复）
+signal burned(camera_id: String)             # 该机位永久失效（设计决定 #20）
 signal cooldown_changed(camera_id: String, remain: float)
 ```
 
@@ -89,7 +89,10 @@ signal needs_hint(npc_id: String, hint: String)
 ## 3. LoopManager（W6 实现）
 
 - 文件：`scripts/loop/loop_manager.gd`（可选 `loop_state.gd` 只放轮次 summary 结构）
-- 职责：一轮的起止、回退到某时刻（含世界重置）、玩家知识保留；**不预置剧情理由**（见设计题 M12/M13）。
+- 职责：一轮的起止、回到录像带某一时刻重开一轮（含世界重置）、玩家知识保留。
+- **设计决定（2026-11-21，#20）**：玩法采用**回放**（录像带），不是时间回溯；本模块只负责轮次/重开，
+  不承担「改写过去」。`rewind_to` 的语义是「回到录像带内的某一刻重开」，不是时间旅行。
+  详见 `docs/DESIGN_DECISIONS.md`。
 
 ```gdscript
 func start_round() -> void
@@ -118,7 +121,7 @@ func reset_for_loop(time: float) -> void   # 参与者把自己重置到 time �
 |---|---|---|
 | 时间轴 | `scripts/loop/time_participant.gd`（W6/W12） | 调 `TimeManager.rewind_present_time(time)`（见下） |
 | 世界 | `scripts/loop/world_participant.gd`（W12） | 调现有 `SimWorld.apply_state(SimTimeline.state_at(t))`（`apply_state` 是唯一写入口） |
-| 摄像头 | W1 的 `CameraSession` 适配器 | `from_dict`/清空冷却与烧毁（M16 拍板后定） |
+| 摄像头 | W1 的 `CameraSession` 适配器 | `from_dict`/清空冷却；烧毁**保持**（M16 已拍板：永久） |
 | 引导 | W2 的 `GuideBus` 适配器 | 复位灯/门/NPC 状态 |
 
 语义：
@@ -127,7 +130,7 @@ func reset_for_loop(time: float) -> void   # 参与者把自己重置到 time �
 - `rewind_to(t, participants)` = 先 `reset_world(participants, t)` 再广播 `world_reset`，然后返回 true；
   单个参与者 `reset_for_loop` 抛错/不存在时 `push_warning` 并继续（不整体失败）；
 - **知识保留**：`ClueManager` 里的 timeline 线索不清空（只读消费，不改 `clue_manager.gd`）；
-- M16 拍板前：烧毁的机位在 `rewind_to` 后**默认保持烧毁**（由 W1 的参与者自己决定）。
+- M16 已拍板（#20）：烧毁的机位**永久不恢复**；`rewind_to` 后由 W1 的参与者保持烧毁。
 
 ### TimeManager 的唯一例外改动（W12 负责）
 

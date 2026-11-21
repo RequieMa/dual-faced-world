@@ -8,6 +8,8 @@ extends Node
 ## - 输入动作在运行时用 InputMap.add_action 注册，**不写 project.godot**；
 ##   节点退出场景树时自动清理自己注册的动作。
 ## - M14 / M15 都可开关：enabled 关闭整个亲身段落，action_enabled 只关闭跳跃动作段。
+##   设计决定（2026-11-21，#20）：M15 的二段跳**不保留**，action_enabled 默认 false；
+##   组件保留为可选项，显式设置才启用。
 ## - 配置沿用 W0 约定：错误写 last_errors 并 emit definition_error，不返回半成品。
 
 signal landed(position: Vector3)
@@ -37,7 +39,9 @@ const INPUT_ACTIONS := {
 var last_errors: Array[String] = []
 
 var _enabled: bool = true
-var _action_enabled: bool = true
+## 设计决定（2026-11-21，#20）：终章的二段跳动作段不保留 → 默认关闭。
+## 组件仍保留为可选项：显式 setup({"action_enabled": true}) 才会启用跳跃。
+var _action_enabled: bool = false
 var _move_speed: float = 3.0
 var _turn_speed: float = 8.0
 var _gravity: float = 20.0
@@ -202,7 +206,7 @@ func get_state() -> Dictionary:
 	}
 
 
-## 回到出生点并清空跳跃预算（循环回溯用）。
+## 回到出生点并清空跳跃预算（循环重开用）。
 func reset() -> void:
 	_reset_pose()
 
