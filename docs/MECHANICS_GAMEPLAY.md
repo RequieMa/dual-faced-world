@@ -40,7 +40,11 @@ godot --path . scenes/main.tscn
 | `Esc` | 关面板；没有面板时离开机位 |
 
 本机实机验证（2026-11-21，Godot 4.7.2）：按 `1` 切到 C1、`F` 让 npc_imaginary 沿路线走到终点、
-`I` 开灯、`T` 打开录像带面板并能切带（T-01 → T-02）、`↑` 快进。
+`I` 开灯、`T` 打开录像带面板并能切带（T-01 → T-02）、`↑` 快进。注意：默认磁带库的
+`known_to_player` 都是 `false`，面板只显示**已发现**的带；实机验证前先用
+`TapeArchive.discover(tape_id)` 发现 2–3 盘，否则面板只显示「还没有已发现的录像带」。
+面板打开时只响应录像带相关按键（`T` / `←→` / `↑↓` / `Esc`），避免后台误切机位。
+`Space` 与 W8 的 `player_jump` 同为空格，但 W8 未接进本场景（跳跃也默认关闭），未来同场时需定优先级。
 
 ```text
 Main (scenes/main.tscn)
@@ -95,7 +99,9 @@ Main (scenes/main.tscn)
 
 - 摄像头计时：`resources/data/surveillance.json`（经 `CameraConfig` + `ConfigLoader`）；
 - 关卡：`resources/data/levels/theater.json`（房间 / 机位，经 `level.schema.json` 校验；
-  加载失败时回落到默认机位并记录 `last_errors`）；
+  加载失败时回落到默认机位并记录 `last_errors`）；装配期会拿 `level.cameras` 与
+  `surveillance.json` 做双向差集，不一致时 `push_warning` 并记入 `get_level_state().camera_mismatches`
+  （计时以 `surveillance.json` 为准）；
 - 对话：`resources/data/dialogues.json`；
 - 录像带：`TapeArchive` autoload 的默认磁带库（`resources/tapes/*.tres`），面板只读展示事件与线索；
 - 场景内容与 NPC 路线：直接写在 `scenes/game_root.tscn`。

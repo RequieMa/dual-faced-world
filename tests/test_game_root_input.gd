@@ -106,6 +106,21 @@ func _test_scene_input() -> void:
 	state = _game_root.get_state()
 	_check("离开后 current 为空", String(state["camera"]["current"]) == "", str(state["camera"]))
 
+	# 键位分发：InputMap 是唯一来源（event.is_action_pressed）
+	_check("按键 2 经 dispatch_key_event 切到 C2",
+		_dispatch(KEY_2) and String(_game_root.get_state()["camera"]["current"]) == String(cameras[1]),
+		str(_game_root.get_state()["camera"]))
+	_check("按键 3 切到 C3",
+		_dispatch(KEY_3) and String(_game_root.get_state()["camera"]["current"]) == String(cameras[2]))
+	_check("按键 4 切到 C4",
+		_dispatch(KEY_4) and String(_game_root.get_state()["camera"]["current"]) == String(cameras[3]))
+	var camera_before_echo := String(_game_root.get_state()["camera"]["current"])
+	_check("echo 按键被忽略", _dispatch(KEY_1, true) == false
+		and String(_game_root.get_state()["camera"]["current"]) == camera_before_echo)
+	_check("未注册的按键不分发", _dispatch(KEY_K) == false)
+	_check("未知动作返回 false", _game_root.handle_action("game_unknown") == false)
+	_check("动作 camera_off 再次离开", _game_root.handle_action("game_camera_off"))
+
 	# 提示：默认目标是按 id 排序后的第一个 NPC
 	var target_id := String(_game_root.get_level_state().get("hint_target", ""))
 	_check("默认提示目标是 npc_imaginary（排序后第一个）", target_id == "npc_imaginary", target_id)
@@ -114,6 +129,12 @@ func _test_scene_input() -> void:
 	var hinted_npc: Dictionary = guide["npcs"].get(target_id, {})
 	_check("提示后目标进入 FOLLOW", String(hinted_npc.get("state", "")) == "FOLLOW", str(hinted_npc))
 	_check("提示词被记录", String(hinted_npc.get("last_hint", "")) == "跟我来", str(hinted_npc))
+	_check("动作 hint_wait 成功", _game_root.handle_action("game_hint_wait"))
+	_check("hint_wait 文案为「等待」",
+		String(_game_root.get_state()["guide"]["npcs"].get(target_id, {}).get("last_hint", "")) == "等待")
+	_check("动作 hint_open 成功", _game_root.handle_action("game_hint_open"))
+	_check("hint_open 文案为「开门」",
+		String(_game_root.get_state()["guide"]["npcs"].get(target_id, {}).get("last_hint", "")) == "开门")
 	_check("动作 cycle_npc 切换目标", _game_root.handle_action("game_cycle_npc"))
 	_check("切换后目标变化", String(_game_root.get_level_state().get("hint_target", "")) != target_id)
 
@@ -132,31 +153,61 @@ func _test_scene_input() -> void:
 	_check("对话推进到第 2 行", int(_game_root.get_state()["dialogue"]["index"]) == 1,
 		str(_game_root.get_state()["dialogue"]))
 
-	# 录像带检查
+	# 录像带检查（先发现全部默认带，才能验证切带与绕回）
 	var archive = root.get_node_or_null("TapeArchive")
 	if archive != null:
 		archive.load_default_library()
-		var tapes: Array = archive.get_tapes()
-		if tapes.size() > 0:
-			archive.discover(String(tapes[0].tape_id))
+		for tape in archive.get_tapes():
+			archive.discover(String(tape.tape_id))
+	_check("面板未打开时 tape_next 返回 false", _game_root.handle_action("game_tape_next") == false)
 	_check("动作 tape 打开面板", _game_root.handle_action("game_tape"))
 	var tape_state: Dictionary = _game_root.get_tape_state()
 	_check("录像带面板已打开", bool(tape_state.get("open", false)), str(tape_state))
-	_check("面板有已发现的带", int(tape_state.get("known_count", 0)) >= 1, str(tape_state))
+	_check("面板有 3 盘已发现的带", int(tape_state.get("known_count", 0)) == 3, str(tape_state))
 	var first_index := int(tape_state.get("index", 0))
-	if int(tape_state.get("known_count", 0)) >= 2:
-		_check("动作 tape_next 切带", _game_root.handle_action("game_tape_next"))
-		var after_next: Dictionary = _game_root.get_tape_state()
-		_check("切带后索引变化", int(after_next.get("index", 0)) != first_index, str(after_next))
-		_check("动作 tape_prev 切回", _game_root.handle_action("game_tape_prev"))
+	_check("动作 tape_next 切带", _game_root.handle_action("game_tape_next"))
+	var after_next: Dictionary = _game_root.get_tape_state()
+	_check("切带后索引 +1", int(after_next.get("index", 0)) == first_index + 1, str(after_next))
+	_check("动作 tape_prev 切回", _game_root.handle_action("game_tape_prev"))
+	_check("切回后索引复原", int(_game_root.get_tape_state().get("index", 0)) == first_index)
+	_check("tape_prev 从第一盘绕回最后一盘",
+		_game_root.handle_action("game_tape_prev")
+		and int(_game_root.get_tape_state().get("index", 0)) == 2,
+		str(_game_root.get_tape_state()))
+	_check("tape_next 从最后一盘绕回第一盘",
+		_game_root.handle_action("game_tape_next")
+		and int(_game_root.get_tape_state().get("index", 0)) == 0,
+		str(_game_root.get_tape_state()))
 	_check("动作 tape_forward 快进", _game_root.handle_action("game_tape_forward"))
 	var seeked: Dictionary = _game_root.get_tape_state()
 	_check("快进后时间增加", float(seeked.get("time", 0.0)) > 0.0, str(seeked))
 	_check("动作 tape_back 回退", _game_root.handle_action("game_tape_back"))
 	_check("回退后时间归零", is_equal_approx(float(_game_root.get_tape_state().get("time", 0.0)), 0.0),
 		str(_game_root.get_tape_state()))
+	_check("面板打开时按键 1 被忽略", _dispatch(KEY_1) == false
+		and String(_game_root.get_state()["camera"]["current"]) == "")
 	_check("动作 tape 再按关闭面板", _game_root.handle_action("game_tape"))
 	_check("面板已关闭", _game_root.get_tape_state().get("open", false) == false)
+	_check("没有机位时 close 返回 false", _game_root.handle_action("game_close") == false)
+	# 前面切过的机位都在冷却里；推进 10 秒让冷却结束，才能验证 close 离开机位。
+	_game_root.tick(10.0)
+	_check("切到 C1 后 close 离开机位", _game_root.handle_action("game_camera_1")
+		and _game_root.handle_action("game_close")
+		and String(_game_root.get_state()["camera"]["current"]) == "",
+		str(_game_root.get_state()["camera"]))
+
+	# 关卡机位与 surveillance.json 的交叉校验
+	var bad_path := "user://bad_level.json"
+	var handle := FileAccess.open(bad_path, FileAccess.WRITE)
+	handle.store_string("{\"id\": \"bad\", \"rooms\": [{\"id\": \"r\", \"name\": \"r\"}], \"cameras\": [{\"id\": \"C9\", \"room\": \"r\"}]}")
+	handle.close()
+	_check("加载含未知机位的关卡返回 true", _game_root.load_level(bad_path))
+	var bad_mismatches: Array = _game_root.get_level_state().get("camera_mismatches", [])
+	_check("交叉校验记录未知机位 C9", bad_mismatches.size() >= 1, str(bad_mismatches))
+	_check("重新加载 theater 后差集清空",
+		_game_root.load_level(LEVEL_PATH)
+		and (_game_root.get_level_state().get("camera_mismatches", []) as Array).is_empty(),
+		str(_game_root.get_level_state().get("camera_mismatches", [])))
 
 	# 卸载清理
 	_game_root.unregister_input_actions()
@@ -168,6 +219,14 @@ func _test_scene_input() -> void:
 
 
 # --- 断言 ---------------------------------------------------------------------
+
+func _dispatch(physical: Key, echo: bool = false) -> bool:
+	var input_event := InputEventKey.new()
+	input_event.physical_keycode = physical
+	input_event.pressed = true
+	input_event.echo = echo
+	return bool(_game_root.dispatch_key_event(input_event))
+
 
 func _check(label: String, condition: bool, detail: String = "") -> void:
 	_checks += 1

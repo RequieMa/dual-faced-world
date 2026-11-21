@@ -91,6 +91,8 @@ var _round_active: bool = false
 ## 关卡数据（resources/data/levels/*.json）。
 var _level: Dictionary = {}
 var _level_cameras: Array[String] = []
+## 关卡机位与 surveillance.json 的差集（装配期警告，见契约 §1）。
+var _camera_mismatches: Array[String] = []
 
 ## 输入：按 World 扫描顺序收集的 NPC，Tab 循环当前提示对象。
 var _npc_ids: Array[String] = []
@@ -131,14 +133,23 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey) or not event.pressed or event.echo:
+	if not (event is InputEventKey):
 		return
-	var key_event := event as InputEventKey
+	if dispatch_key_event(event as InputEventKey):
+		get_viewport().set_input_as_handled()
+
+
+## 按键分发（InputMap 是唯一来源）：测试直接调用它，避免依赖真实输入循环。
+## 面板打开时只响应录像带相关按键，避免后台误切机位/发提示。
+func dispatch_key_event(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo:
+		return false
 	for action in INPUT_ACTIONS:
-		if key_event.physical_keycode == INPUT_ACTIONS[action]:
-			if handle_action(action):
-				get_viewport().set_input_as_handled()
-			return
+		if _tape_open and not (String(action).begins_with("game_tape") or action == "game_close"):
+			continue
+		if event.is_action_pressed(action):
+			return handle_action(action)
+	return false
 
 
 # --- 装配 ---------------------------------------------------------------------
@@ -240,18 +251,47 @@ func _capture_world_initial_state() -> void:
 # --- 关卡数据 -------------------------------------------------------------------
 
 func _load_level() -> void:
+	load_level(LEVEL_PATH)
+
+
+## 加载关卡并做机位交叉校验（可注入路径，便于测试 fallback 与差集告警）。
+## 契约：level.cameras 只描述摆放，surveillance.json 是计时权威来源；不一致以 surveillance 为准。
+func load_level(path: String) -> bool:
 	var loader = ConfigLoaderScript.new()
-	_level = loader.load_json(LEVEL_PATH, LEVEL_SCHEMA_PATH)
-	if _level.is_empty():
+	var data: Dictionary = loader.load_json(path, LEVEL_SCHEMA_PATH)
+	_camera_mismatches.clear()
+	if data.is_empty():
 		_fail("level 配置加载失败: %s" % _join_errors(loader.last_errors))
 		_level = {"id": "", "name": "", "rooms": [], "cameras": []}
+		_level_cameras.assign(DEFAULT_CAMERAS)
+		_refresh_hud()
+		return false
+	_level = data
 	_level_cameras.clear()
 	for entry in _level.get("cameras", []):
 		if entry is Dictionary and not String(entry.get("id", "")).is_empty():
 			_level_cameras.append(String(entry["id"]))
 	if _level_cameras.is_empty():
 		_level_cameras.assign(DEFAULT_CAMERAS)
-		_fail("level 没有配置机位，使用默认机位")
+		push_warning("GameRoot: level 没有配置机位，使用默认机位 %s" % str(DEFAULT_CAMERAS))
+	_cross_check_cameras()
+	_refresh_hud()
+	return true
+
+
+## 双向差集：level 多配 / 少配 surveillance 机位都记录到 _camera_mismatches 并 push_warning。
+func _cross_check_cameras() -> void:
+	var known: Dictionary = _camera_config.get_cameras()
+	if known.is_empty():
+		return
+	for camera_id in _level_cameras:
+		if not known.has(camera_id):
+			_camera_mismatches.append("level 机位 %s 未在 surveillance.json 中配置" % camera_id)
+	for camera_id in known:
+		if not _level_cameras.has(String(camera_id)):
+			_camera_mismatches.append("surveillance 机位 %s 未在关卡中配置" % camera_id)
+	for mismatch in _camera_mismatches:
+		push_warning("GameRoot: " + mismatch)
 
 
 func _collect_npc_ids() -> void:
@@ -346,7 +386,7 @@ func _action_send_hint(action: String) -> bool:
 func _action_toggle_indicator() -> bool:
 	if _lights.is_empty():
 		return false
-	var target_id := String(_lights.keys()[0])
+	var target_id := _first_target_id(_lights, "light_a")
 	var current := bool(_lights[target_id].call("is_on"))
 	var ok := set_indicator(target_id, not current)
 	_refresh_hud()
@@ -356,7 +396,14 @@ func _action_toggle_indicator() -> bool:
 func _action_open_door() -> bool:
 	if _doors.is_empty():
 		return false
-	return open_door(String(_doors.keys()[0]))
+	return open_door(_first_target_id(_doors, "door_a"))
+
+
+## 优先用关卡的固定 id；找不到才回落到扫描顺序（避免加一盏灯就切错目标）。
+func _first_target_id(targets: Dictionary, preferred: String) -> String:
+	if targets.has(preferred):
+		return preferred
+	return String(targets.keys()[0])
 
 
 func _action_cycle_npc() -> bool:
@@ -390,13 +437,15 @@ func _action_close() -> bool:
 
 func _setup_tape_archive() -> void:
 	_tape_archive = get_node_or_null("/root/TapeArchive")
-	if _tape_archive != null and _tape_archive.get_tapes().is_empty():
-		_tape_archive.load_default_library()
 
 
 func _known_tapes() -> Array:
-	if _tape_archive == null:
+	if _tape_archive == null or not _tape_archive.has_method("get_known_tapes"):
 		return []
+	# 懒加载：只有真正需要磁带列表时才碰全局 autoload 的默认库。
+	if _tape_archive.has_method("get_tapes") and _tape_archive.has_method("load_default_library"):
+		if _tape_archive.get_tapes().is_empty():
+			_tape_archive.load_default_library()
 	return _tape_archive.get_known_tapes()
 
 
@@ -479,10 +528,10 @@ func _tape_lines() -> Array[String]:
 		lines.append("")
 		lines.append("（还没有已发现的录像带）")
 		return lines
-	_tape_index = clampi(_tape_index, 0, tapes.size() - 1)
-	var tape = tapes[_tape_index]
+	var index := clampi(_tape_index, 0, tapes.size() - 1)
+	var tape = tapes[index]
 	lines.append("")
-	lines.append("第 %d/%d 盘：%s" % [_tape_index + 1, tapes.size(), tape.display_name()])
+	lines.append("第 %d/%d 盘：%s" % [index + 1, tapes.size(), tape.display_name()])
 	lines.append("时长 %s  ｜  当前 %s" % [
 		tape.format_seconds(tape.duration()), tape.format_seconds(_tape_time)])
 	var events: Array = tape.events_between(-1.0, _tape_time)
@@ -512,6 +561,9 @@ func _clues_up_to(tape) -> Array[String]:
 	for clue in clues.get_timeline_clues():
 		if not clue is Dictionary:
 			continue
+		# 实时（live）线索不属于录像带回放，跳过。
+		if String(clue.get("source", "")) == "live":
+			continue
 		var at := float(clue.get("t", -1.0))
 		if at < float(tape.time_start) or at > limit:
 			continue
@@ -529,15 +581,16 @@ func get_tape_state() -> Dictionary:
 	var tape_id := ""
 	var duration := 0.0
 	var time := 0.0
+	var index := _tape_index
 	if not tapes.is_empty():
-		_tape_index = clampi(_tape_index, 0, tapes.size() - 1)
-		var tape = tapes[_tape_index]
+		index = clampi(_tape_index, 0, tapes.size() - 1)
+		var tape = tapes[index]
 		tape_id = String(tape.tape_id)
 		duration = float(tape.duration())
 		time = _tape_time
 	return {
 		"open": _tape_open,
-		"index": _tape_index,
+		"index": index,
 		"known_count": tapes.size(),
 		"tape_id": tape_id,
 		"time": time,
@@ -569,6 +622,7 @@ func get_level_state() -> Dictionary:
 		"name": String(_level.get("name", "")),
 		"room_count": (_level.get("rooms", []) as Array).size(),
 		"cameras": _level_cameras.duplicate(),
+		"camera_mismatches": _camera_mismatches.duplicate(),
 		"hint_target": _current_npc_id(),
 	}
 
