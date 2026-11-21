@@ -22,8 +22,8 @@
 - **决定**：不保留终章的二段跳段落。
 - **影响**：
   - `PlayerController.action_enabled` **默认 `false`**（跳跃动作段默认关闭）；
-  - `PlayerController` 的 `setup({"action_enabled": true})` 是唯一的显式开启入口；`JumpSection` 仅作为
-    底层可选项保留，不再接进任何关卡；
+  - 配置入口是 `PlayerController.setup({"action_enabled": true})`；运行时也可用 `set_action_enabled(true)`；
+    `JumpSection` 仅作为底层可选项保留，不再接进任何关卡；
   - 测试 `tests/test_player_controller.gd` 有专门用例锁定「默认关 / 显式开」。
 
 ## 4. 烧毁的摄像头不恢复（M16）
