@@ -1,5 +1,7 @@
 # CODEOWNERS
 
-# 所有改动默认需要仓库 owner 审核；GitHub ruleset 的
-# "Require review from Code Owners" 依赖本文件。
+# 路由用：改动默认归属仓库 owner。
+# 注意：ruleset `release-for-testing` 已把 required_approving_review_count 设为 0，
+# 且 require_code_owner_review=false，所以本文件目前**不会**阻塞合并；
+# 若将来恢复人工评审，需要同时打开 "Require review from Code Owners"。
 * @RequieMa

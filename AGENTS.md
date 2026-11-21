@@ -52,9 +52,11 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 10. **合并**：等 CI 全绿、reviewer 明确「可合并」后由作者自己合并：
 
     ```sh
-    gh pr merge <n> --squash --delete-branch
+    gh pr merge <n> --squash --delete-branch   # feature-* / hotfix-*
+    gh pr merge <n> --rebase                   # develop→release、release→main
     ```
 
+    `--delete-branch` 只用于 `feature-*` / `hotfix-*`；`release` 是长期分支，合并后保留。
     合并后关掉对应 issue（PR 未写 `closes #N` 时手动 `gh issue close`）。CI 红或有阻塞项时不得合并。
 
 ## 3. TDD 与测试
@@ -86,7 +88,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 - 全量测试通过；
 - 无 P0/P1 未解决；
 - 有发布说明 / 变更清单；
-- 由 release 负责人（人或被指派的 release agent）发起 PR。
+- 由 release 负责人（人或被指派的 release agent）发起**并合并** PR：`gh pr merge <n> --rebase`，不删除 `release` 分支。
 
 `release` 出问题：
 

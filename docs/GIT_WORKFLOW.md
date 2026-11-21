@@ -9,7 +9,7 @@
 | `main` | 稳定发布线 | `release` | —（合并后打 tag） |
 | `release` | 端到端测试版本 | `develop`、`hotfix-*` | `main` |
 | `develop` | 集成分支 | `feature-*`、`release` 回合 | `release` |
-| `feature-<slug>` | 单个功能/工单 | `develop` | `develop`（PR + review） |
+| `feature-<slug>` | 单个功能/工单 | `develop` | `develop`（PR + 独立评审后自合并） |
 | `hotfix-<slug>` | release 上的紧急修复 | `release` | `release`，再回合 `develop` |
 
 ```text
@@ -46,15 +46,15 @@ gh pr create --base develop --head feature-<slug>
 
 1. **从 `develop` 切出**，不从 `main` 或别的 feature 切。
 2. **先红后绿**：PR 里要有失败测试与通过测试的输出。
-3. **独立 review**：由另一个 agent（新上下文）或人 review；作者不得合并自己的 PR。
+3. **独立 review**：由另一个 agent（新上下文）或人 review；reviewer 的「是否可合并」是合并门槛。
 4. PR 描述使用 `.github/pull_request_template.md` 的清单。
-5. 合并方式：squash merge（保持 `develop` 线性）；分支合并后删除。
+5. **自合并**：CI 全绿 + reviewer 无阻塞项后，作者自己 squash 合并并删除分支；不再等人批准。
 
 ## 3. 评审
 
 - Reviewer 只读，输出：阻塞项 / 建议项 / 测试可信度 / 是否可合并。
-- 至少一名 reviewer 批准后才能合并；`develop` 建议开启“Require a pull request before merging”。
-- 作者与 reviewer 不能是同一个 agent 会话。
+- 不再要求人工批准：reviewer 无阻塞项 + CI 全绿即可由作者合并（ruleset 的 approval 数为 0）。
+- 作者与 reviewer 不能是同一个 agent 会话；有阻塞项时不得合并，修完复审一次。
 
 ## 4. Release 评估清单
 
@@ -115,15 +115,17 @@ subject 用祈使句、≤ 72 字符；body 说明“为什么”，不要只写
 
 | 规则 | 值 |
 |---|---|
-| Pull request | 必须；至少 1 approval；要求 Code Owner review |
+| Pull request | 必须；**required approvals = 0**；不要求 Code Owner review |
 | 线性历史 | 必须（禁止 merge commit） |
 | 禁止删除分支 | 是 |
 | 禁止 non-fast-forward | 是 |
 | 允许的合并方式 | merge / squash / rebase（线性历史实际排除 merge commit） |
+| 未归属提交 | 需额外 approval（`require_extra_approval_for_unattributed_changes`） |
 
 配套：
 
-- `.github/CODEOWNERS` 已把 `*` 指派给 `@RequieMa`，Code Owner review 就是 RequieMa 的批准。
+- `.github/CODEOWNERS` 仅作路由；ruleset 的 `require_code_owner_review=false`，它不阻塞合并。
+- **CI 不是 GitHub 强制项**：ruleset 未配置 required status checks，`headless` 绿只是流程要求。建议 admin 把 `headless` 加进 ruleset 的 required checks（Agent 账号 `admin=false`，改不了）。
 - 仍建议 admin 把默认分支从 `main` 改为 `develop`（Agent 账号 `admin=false`，改不了）。
 
 ## 8. Super Agent 的硬约束
@@ -133,7 +135,7 @@ subject 用祈使句、≤ 72 字符；body 说明“为什么”，不要只写
 - 必须从 `develop` 切 `feature-<slug>`；
 - TDD 先红后绿；
 - 自检后用独立 subagent 复审；
-- 只提 PR 到 `develop`，不合并自己的 PR；
-- release/hotfix 流程与 tag 规则。
+- 只提 PR 到 `develop`；CI 绿 + 独立评审无阻塞项后**自己 squash 合并**并删分支；
+- release/hotfix 流程与 tag 规则；`develop→release` / `release→main` 由 release 负责人 rebase 合并，不删 `release`。
 
 Super Agent 的 `prepare` 命令已改为 clone 仓库后 `checkout develop`，保证 Worker 起点正确。
