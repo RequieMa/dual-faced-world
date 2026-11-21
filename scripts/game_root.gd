@@ -26,10 +26,45 @@ const GuideBusScript := preload("res://scripts/guide/guide_bus.gd")
 const LoopManagerScript := preload("res://scripts/loop/loop_manager.gd")
 const DialogueControllerScript := preload("res://scripts/dialogue/dialogue_controller.gd")
 const StyleControllerScript := preload("res://scripts/render/style_controller.gd")
+const ConfigLoaderScript := preload("res://scripts/config/config_loader.gd")
 
 const SURVEILLANCE_PATH := "res://resources/data/surveillance.json"
 const DIALOGUES_PATH := "res://resources/data/dialogues.json"
+const LEVEL_PATH := "res://resources/data/levels/theater.json"
+const LEVEL_SCHEMA_PATH := "res://resources/data/schema/level.schema.json"
 const WORLD_NODE := "World"
+
+## 关卡没加载出来时的兜底机位（与 surveillance.json 对齐）。
+const DEFAULT_CAMERAS: Array[String] = ["C1", "C2", "C3", "C4"]
+
+## 玩法层输入：运行时用 InputMap.add_action 注册，**不写 project.godot**；
+## 节点退出场景树时清理自己注册的动作（沿用 W8 的做法）。
+const INPUT_ACTIONS := {
+	"game_camera_1": KEY_1,
+	"game_camera_2": KEY_2,
+	"game_camera_3": KEY_3,
+	"game_camera_4": KEY_4,
+	"game_camera_off": KEY_0,
+	"game_hint_follow": KEY_F,
+	"game_hint_wait": KEY_G,
+	"game_hint_open": KEY_O,
+	"game_indicator": KEY_I,
+	"game_door": KEY_H,
+	"game_cycle_npc": KEY_TAB,
+	"game_dialogue": KEY_SPACE,
+	"game_tape": KEY_T,
+	"game_tape_next": KEY_RIGHT,
+	"game_tape_prev": KEY_LEFT,
+	"game_tape_forward": KEY_UP,
+	"game_tape_back": KEY_DOWN,
+	"game_close": KEY_ESCAPE,
+}
+
+const HINT_TEXTS := {
+	"game_hint_follow": "跟我来",
+	"game_hint_wait": "等待",
+	"game_hint_open": "开门",
+}
 
 ## 真实游玩时由 `_process` 推进计时；headless 测试关掉它，改用固定步长 tick()。
 @export var auto_tick: bool = true
@@ -53,19 +88,57 @@ var _initial_light_states: Dictionary = {}
 
 var _round_active: bool = false
 
+## 关卡数据（resources/data/levels/*.json）。
+var _level: Dictionary = {}
+var _level_cameras: Array[String] = []
+
+## 输入：按 World 扫描顺序收集的 NPC，Tab 循环当前提示对象。
+var _npc_ids: Array[String] = []
+var _npc_index: int = 0
+var _registered_actions: Array[String] = []
+
+## 录像带检查（读取 TapeArchive autoload；没有也不影响其它系统）。
+var _tape_archive: Node = null
+var _tape_panel: CanvasLayer = null
+var _tape_label: Label = null
+var _tape_open: bool = false
+var _tape_index: int = 0
+var _tape_time: float = 0.0
+const TAPE_SEEK_STEP := 10.0
+
 
 func _ready() -> void:
 	_build_systems()
 	_load_data()
+	_load_level()
 	_bind_world()
+	_collect_npc_ids()
+	_setup_tape_archive()
+	register_input_actions()
 	_capture_world_initial_state()
+	_refresh_hud()
 	set_process(auto_tick)
+
+
+func _exit_tree() -> void:
+	unregister_input_actions()
 
 
 func _process(delta: float) -> void:
 	if auto_tick:
 		# 切窗/卡顿会产生 5s+ 的 delta；限步避免一帧把摄像头直接烧掉。
 		tick(minf(delta, 0.1))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var key_event := event as InputEventKey
+	for action in INPUT_ACTIONS:
+		if key_event.physical_keycode == INPUT_ACTIONS[action]:
+			if handle_action(action):
+				get_viewport().set_input_as_handled()
+			return
 
 
 # --- 装配 ---------------------------------------------------------------------
@@ -162,6 +235,342 @@ func _capture_world_initial_state() -> void:
 	for target_id in _lights:
 		if is_instance_valid(_lights[target_id]):
 			_initial_light_states[target_id] = bool(_lights[target_id].is_on())
+
+
+# --- 关卡数据 -------------------------------------------------------------------
+
+func _load_level() -> void:
+	var loader = ConfigLoaderScript.new()
+	_level = loader.load_json(LEVEL_PATH, LEVEL_SCHEMA_PATH)
+	if _level.is_empty():
+		_fail("level 配置加载失败: %s" % _join_errors(loader.last_errors))
+		_level = {"id": "", "name": "", "rooms": [], "cameras": []}
+	_level_cameras.clear()
+	for entry in _level.get("cameras", []):
+		if entry is Dictionary and not String(entry.get("id", "")).is_empty():
+			_level_cameras.append(String(entry["id"]))
+	if _level_cameras.is_empty():
+		_level_cameras.assign(DEFAULT_CAMERAS)
+		_fail("level 没有配置机位，使用默认机位")
+
+
+func _collect_npc_ids() -> void:
+	_npc_ids.clear()
+	var ids: Array = _npcs.keys()
+	ids.sort()
+	for target_id in ids:
+		_npc_ids.append(String(target_id))
+	_npc_index = 0
+
+
+func _current_npc_id() -> String:
+	if _npc_ids.is_empty():
+		return ""
+	return _npc_ids[clampi(_npc_index, 0, _npc_ids.size() - 1)]
+
+
+# --- 输入（运行时注册，不改 project.godot） ----------------------------------------
+
+func register_input_actions() -> void:
+	for action in INPUT_ACTIONS:
+		if InputMap.has_action(action):
+			continue
+		InputMap.add_action(action)
+		var input_event := InputEventKey.new()
+		input_event.physical_keycode = INPUT_ACTIONS[action]
+		InputMap.action_add_event(action, input_event)
+		_registered_actions.append(action)
+
+
+func unregister_input_actions() -> void:
+	for action in _registered_actions:
+		if InputMap.has_action(action):
+			InputMap.erase_action(action)
+	_registered_actions.clear()
+
+
+## 给测试 / 宿主用的动作入口：不经过 InputEvent，行为与按键一致。
+func handle_action(action: String) -> bool:
+	match action:
+		"game_camera_1", "game_camera_2", "game_camera_3", "game_camera_4":
+			return _action_switch_camera(action)
+		"game_camera_off":
+			leave_camera()
+			_refresh_hud()
+			return true
+		"game_hint_follow", "game_hint_wait", "game_hint_open":
+			return _action_send_hint(action)
+		"game_indicator":
+			return _action_toggle_indicator()
+		"game_door":
+			return _action_open_door()
+		"game_cycle_npc":
+			return _action_cycle_npc()
+		"game_dialogue":
+			return _action_advance_dialogue()
+		"game_tape":
+			_toggle_tape_panel()
+			return true
+		"game_tape_next":
+			return _action_tape_move(1)
+		"game_tape_prev":
+			return _action_tape_move(-1)
+		"game_tape_forward":
+			return _action_tape_seek(TAPE_SEEK_STEP)
+		"game_tape_back":
+			return _action_tape_seek(-TAPE_SEEK_STEP)
+		"game_close":
+			return _action_close()
+		_:
+			return false
+
+
+func _action_switch_camera(action: String) -> bool:
+	var index := action.substr(action.length() - 1).to_int() - 1
+	if index < 0 or index >= _level_cameras.size():
+		return false
+	var ok := switch_camera(_level_cameras[index])
+	_refresh_hud()
+	return ok
+
+
+func _action_send_hint(action: String) -> bool:
+	var target := _current_npc_id()
+	if target.is_empty():
+		return false
+	var ok := send_hint(target, String(HINT_TEXTS.get(action, "")))
+	_refresh_hud()
+	return ok
+
+
+func _action_toggle_indicator() -> bool:
+	if _lights.is_empty():
+		return false
+	var target_id := String(_lights.keys()[0])
+	var current := bool(_lights[target_id].call("is_on"))
+	var ok := set_indicator(target_id, not current)
+	_refresh_hud()
+	return ok
+
+
+func _action_open_door() -> bool:
+	if _doors.is_empty():
+		return false
+	return open_door(String(_doors.keys()[0]))
+
+
+func _action_cycle_npc() -> bool:
+	if _npc_ids.size() <= 1:
+		return false
+	_npc_index = (_npc_index + 1) % _npc_ids.size()
+	_refresh_hud()
+	return true
+
+
+func _action_advance_dialogue() -> bool:
+	if not _dialogue_controller.is_active():
+		return false
+	_dialogue_controller.advance()
+	_refresh_hud()
+	return true
+
+
+func _action_close() -> bool:
+	if _tape_open:
+		_close_tape()
+		return true
+	if not String(_camera_session.get_state().get("current", "")).is_empty():
+		leave_camera()
+		_refresh_hud()
+		return true
+	return false
+
+
+# --- 录像带检查 -----------------------------------------------------------------
+
+func _setup_tape_archive() -> void:
+	_tape_archive = get_node_or_null("/root/TapeArchive")
+	if _tape_archive != null and _tape_archive.get_tapes().is_empty():
+		_tape_archive.load_default_library()
+
+
+func _known_tapes() -> Array:
+	if _tape_archive == null:
+		return []
+	return _tape_archive.get_known_tapes()
+
+
+func _toggle_tape_panel() -> void:
+	if _tape_open:
+		_close_tape()
+		return
+	_tape_open = true
+	_tape_index = 0
+	_tape_time = 0.0
+	_ensure_tape_panel()
+	if _tape_panel != null:
+		_tape_panel.visible = true
+	_refresh_tape()
+
+
+func _close_tape() -> void:
+	_tape_open = false
+	if _tape_panel != null:
+		_tape_panel.visible = false
+	_refresh_hud()
+
+
+func _action_tape_move(direction: int) -> bool:
+	if not _tape_open:
+		return false
+	var tapes := _known_tapes()
+	if tapes.size() < 2:
+		return false
+	_tape_index = posmod(_tape_index + direction, tapes.size())
+	_tape_time = 0.0
+	_refresh_tape()
+	return true
+
+
+func _action_tape_seek(delta: float) -> bool:
+	if not _tape_open:
+		return false
+	var tapes := _known_tapes()
+	if tapes.is_empty():
+		return false
+	var tape = tapes[clampi(_tape_index, 0, tapes.size() - 1)]
+	_tape_time = clampf(_tape_time + delta, 0.0, float(tape.duration()))
+	_refresh_tape()
+	return true
+
+
+func _ensure_tape_panel() -> void:
+	if _tape_panel != null:
+		return
+	_tape_panel = CanvasLayer.new()
+	_tape_panel.name = "TapePanel"
+	add_child(_tape_panel)
+	var background := ColorRect.new()
+	background.color = Color(0.04, 0.05, 0.07, 0.92)
+	background.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	background.offset_top = -280.0
+	_tape_panel.add_child(background)
+	_tape_label = Label.new()
+	_tape_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_tape_label.offset_top = -264.0
+	_tape_label.offset_left = 28.0
+	_tape_label.offset_right = -28.0
+	_tape_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_tape_label.add_theme_font_size_override("font_size", 18)
+	_tape_panel.add_child(_tape_label)
+	_tape_panel.visible = false
+
+
+func _refresh_tape() -> void:
+	if _tape_label != null:
+		_tape_label.text = "\n".join(_tape_lines())
+
+
+func _tape_lines() -> Array[String]:
+	var lines: Array[String] = []
+	lines.append("录像带检查  ｜  T 关闭 · ← → 切带 · ↑ ↓ 快进/快退")
+	var tapes := _known_tapes()
+	if tapes.is_empty():
+		lines.append("")
+		lines.append("（还没有已发现的录像带）")
+		return lines
+	_tape_index = clampi(_tape_index, 0, tapes.size() - 1)
+	var tape = tapes[_tape_index]
+	lines.append("")
+	lines.append("第 %d/%d 盘：%s" % [_tape_index + 1, tapes.size(), tape.display_name()])
+	lines.append("时长 %s  ｜  当前 %s" % [
+		tape.format_seconds(tape.duration()), tape.format_seconds(_tape_time)])
+	var events: Array = tape.events_between(-1.0, _tape_time)
+	lines.append("")
+	if events.is_empty():
+		lines.append("（这一刻还没有事件）")
+	else:
+		for entry in events:
+			lines.append("· %s  %s" % [
+				tape.format_seconds(float(entry.get("t", 0.0))), String(entry.get("event", ""))])
+	var clues := _clues_up_to(tape)
+	if not clues.is_empty():
+		lines.append("")
+		lines.append("线索：")
+		for clue in clues:
+			lines.append("· " + String(clue))
+	return lines
+
+
+## ClueManager 的 timeline 线索（绝对时间）落在 [带首, 带首 + 当前相对时间]。
+func _clues_up_to(tape) -> Array[String]:
+	var result: Array[String] = []
+	var clues = get_node_or_null("/root/ClueManager")
+	if clues == null:
+		return result
+	var limit := float(tape.time_start) + _tape_time
+	for clue in clues.get_timeline_clues():
+		if not clue is Dictionary:
+			continue
+		var at := float(clue.get("t", -1.0))
+		if at < float(tape.time_start) or at > limit:
+			continue
+		result.append("%s  %s: %s → %s" % [
+			tape.format_seconds(at - float(tape.time_start)),
+			String(clue.get("type", "")),
+			String(clue.get("actor", "")),
+			String(clue.get("target", "")),
+		])
+	return result
+
+
+func get_tape_state() -> Dictionary:
+	var tapes := _known_tapes()
+	var tape_id := ""
+	var duration := 0.0
+	var time := 0.0
+	if not tapes.is_empty():
+		_tape_index = clampi(_tape_index, 0, tapes.size() - 1)
+		var tape = tapes[_tape_index]
+		tape_id = String(tape.tape_id)
+		duration = float(tape.duration())
+		time = _tape_time
+	return {
+		"open": _tape_open,
+		"index": _tape_index,
+		"known_count": tapes.size(),
+		"tape_id": tape_id,
+		"time": time,
+		"duration": duration,
+	}
+
+
+# --- HUD -----------------------------------------------------------------------
+
+func _refresh_hud() -> void:
+	var hint_label := get_node_or_null("UI/Hint") as Label
+	if hint_label == null:
+		return
+	var current := ""
+	if is_instance_valid(_camera_session):
+		current = String(_camera_session.get_state().get("current", ""))
+	var camera_text := current if not current.is_empty() else "—"
+	var level_name := String(_level.get("name", ""))
+	if level_name.is_empty():
+		level_name = "（关卡未加载）"
+	var npc := _current_npc_id()
+	hint_label.text = "关卡：%s ｜ 机位：%s ｜ 提示对象：%s（Tab 切换）\n1–4 机位 · 0 离开 · F 跟随 · G 等待 · O 开门 · I 灯 · H 门 · Space 对话 · T 录像带" % [
+		level_name, camera_text, npc if not npc.is_empty() else "—"]
+
+
+func get_level_state() -> Dictionary:
+	return {
+		"id": String(_level.get("id", "")),
+		"name": String(_level.get("name", "")),
+		"room_count": (_level.get("rooms", []) as Array).size(),
+		"cameras": _level_cameras.duplicate(),
+		"hint_target": _current_npc_id(),
+	}
 
 
 # --- 时钟 ---------------------------------------------------------------------
@@ -299,6 +708,9 @@ func get_state() -> Dictionary:
 		"dialogue": _dialogue_controller.get_state() if is_instance_valid(_dialogue_controller) else {},
 		"style": _style_controller.get_state() if is_instance_valid(_style_controller) else {},
 		"round_active": _round_active,
+		"level": get_level_state(),
+		"tape": get_tape_state(),
+		"input_actions": _registered_actions.duplicate(),
 		"last_errors": last_errors.duplicate(),
 	}
 
