@@ -44,7 +44,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
    - `git diff develop...HEAD`
    - 测试命令与红/绿两次输出
    - 工单目标与验收标准
-   要求它逐条列出阻塞问题；修完后让它复审一次。
+   要求它逐条列出阻塞问题；修完后让它复审一次。reviewer 的结论原文要贴进 PR 评论（可审计），不能只由作者转述。
 7. **提交**：Conventional Commits（`feat:` / `fix:` / `test:` / `docs:` / `refactor:` / `chore:`）。
 8. **推送**：`git push -u origin feature-<slug>`
 9. **开 PR**：`gh pr create --base develop --head feature-<slug>`。
@@ -88,6 +88,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 - 全量测试通过；
 - 无 P0/P1 未解决；
 - 有发布说明 / 变更清单；
+- 同样走独立评审（reviewer 无阻塞项）且 CI 全绿；
 - 由 release 负责人（人或被指派的 release agent）发起**并合并** PR：`gh pr merge <n> --rebase`，不删除 `release` 分支。
 
 `release` 出问题：
