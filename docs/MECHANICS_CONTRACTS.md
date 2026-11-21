@@ -40,10 +40,16 @@ signal burned(camera_id: String)             # 该机位永久失效（默认策
 signal cooldown_changed(camera_id: String, remain: float)
 ```
 
-错误语义：`enter` 在冷却中返回 `false`（不换当前机位）；已烧毁返回 `false`；
-`configure` 缺省某机位时用**代码默认值**（`dwell = 6.0`、`cooldown = 4.0`，W1 定义为常量并在这里登记），
-并 `push_warning`，不阻止启动。`surveillance.json` 的键是机位 id 的**权威计时来源**；
-`level.cameras[]` 只描述场景摆放，W12 交叉校验，不一致时以 `surveillance.json` 为准并警告。
+错误语义：
+
+- 同机位重复 `enter`：返回 `true`，不重置停留计时（`remain` 保持不变），不发信号。
+- 从机位 A 直接 `enter` 机位 B：先按 `leave(A)` 的规则让 A 进入冷却（`cooldown > 0` 时发一次
+  `cooldown_changed(A, cooldown)`），再进入 B。
+- 冷却中 / 已烧毁 / 未知机位：返回 `false`；不换当前机位、不改变任何状态，**不发信号**
+  （避免宿主在 `cooldown_changed` 等回调里重试 `enter` 造成递归）。
+- `configure` 缺省某机位时用**代码默认值**（`dwell = 6.0`、`cooldown = 4.0`，W1 定义为常量并在这里登记），
+  并 `push_warning`，不阻止启动。`surveillance.json` 的键是机位 id 的**权威计时来源**；
+  `level.cameras[]` 只描述场景摆放，W12 交叉校验，不一致时以 `surveillance.json` 为准并警告。
 
 ## 2. GuideBus / GuideableNpc（W2 实现）
 
