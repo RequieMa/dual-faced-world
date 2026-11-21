@@ -13,6 +13,7 @@
 | 地图数据 | 房间/通道/机位写在 `theater_map.gd` 的常量表里，不要手改节点 |
 | 验证 | 先 `validate` → 再 headless 冒烟 → 最后交互验证（三者缺一不可） |
 | 工具状态 | `.dsh/`（Game Studio 状态、日志、截图）属于本机工具产物，不入库 |
+| 外部资产 | `external-assets/` 只跟踪 `.gdignore`；内容和 `audio/models/textures` 目录结构不入库，随文件夹压缩包整体分发/迁移——有意如此，不要再加 `.gitkeep` 的 git 例外 |
 
 ---
 
