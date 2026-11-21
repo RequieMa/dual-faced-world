@@ -5,7 +5,7 @@ extends SceneTree
 
 const SCENE_PATH := "res://scenes/game_root.tscn"
 ## 全绿时应执行的断言数：运行时错误会中止当前函数，靠数量守恒抓住「假绿」。
-const EXPECTED_CHECKS := 37
+const EXPECTED_CHECKS := 40
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -160,9 +160,16 @@ func _test_burn_penalty() -> void:
 	_check("超时前烧毁的机位已结算",
 		String(timeout_state["phase"]) == "lost" and int(timeout_state["score"]) == -30,
 		str(timeout_state))
+	# 失败阶段计时仍在跑：再烧一台，重试时应补扣。
+	_check("失败后仍可切机位", instance.handle_action("game_camera_2"))
+	instance.tick(7.0)
+	_check("失败阶段的烧毁暂不扣分", int(instance.get_demo_state()["score"]) == -30,
+		str(instance.get_demo_state()))
 	instance.handle_action("game_restart")
+	_check("重试时补扣失败阶段烧毁的机位", int(instance.get_demo_state()["score"]) == -60,
+		str(instance.get_demo_state()))
 	instance.tick(1.0)
-	_check("重试后烧毁机位不二次扣分", int(instance.get_demo_state()["score"]) == -30,
+	_check("重试后不再次扣分", int(instance.get_demo_state()["score"]) == -60,
 		str(instance.get_demo_state()))
 	instance.free()
 

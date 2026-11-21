@@ -35,7 +35,7 @@
 - [x] 玩法层输入 + 关卡数据：`GameRoot` 支持键盘操作（1–4 机位 / `F` `G` `O` 提示 / `I` 灯 / `H` 门 /
   `Space` 对话 / `T` 录像带面板），关卡走 `resources/data/levels/theater.json`
 - [x] 可玩 demo（序章，3 轮）：限时 60s 把朋友引导到门口，每轮得分、超时失败、`R` 重试/重玩、
-  烧毁摄像头扣分；验收 `tests/test_prologue_demo.gd`（31 条断言）
+  烧毁摄像头扣分；验收 `tests/test_prologue_demo.gd`（40 条断言，带断言数守卫）
 - [ ] 玩法闭环的「内容化」：把 demo 骨架换成正式设计
   - 磁带拾取（场景里发现磁带 → `TapeArchive.discover`，替代 demo 的每轮自动解锁）
   - 关卡目标与失败条件按剧情重设计（敌人/危险/盲区接入：W5/W7 目前未接进主场景）

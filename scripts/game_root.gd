@@ -677,10 +677,8 @@ func _update_demo(delta: float) -> void:
 	_demo_time_left = maxf(0.0, _demo_time_left - delta)
 	_apply_burn_penalty()
 	if _demo_target_arrived():
-		_apply_burn_penalty()  # 结算同帧烧毁
 		_complete_demo_round()
 	elif _demo_time_left <= 0.0:
-		_apply_burn_penalty()  # 超时前烧毁的机位也要结算
 		_demo_fail("超时")
 	_refresh_demo_hud()
 
@@ -706,6 +704,8 @@ func _apply_burn_penalty() -> void:
 
 func _complete_demo_round() -> void:
 	_demo_score += DEMO_ROUND_SCORE + int(ceil(_demo_time_left))
+	if _round_active:
+		end_round({"outcome": "won"})
 	if _demo_round >= DEMO_ROUNDS:
 		_demo_phase = "won"
 		_demo_message = "演示通关 · 得分 %d（按 R 重玩）" % _demo_score
@@ -723,7 +723,11 @@ func _demo_fail(reason: String) -> void:
 
 func _demo_retry() -> void:
 	if _demo_phase == "lost":
+		# 失败后计时仍在跑（tick 继续推进摄像头），重试前把这段烧毁补扣。
+		_apply_burn_penalty()
 		_demo_phase = "playing"
+		if _tape_open:
+			_close_tape()
 		_begin_demo_round(false)  # 重试不额外解锁磁带
 	elif _demo_phase == "won":
 		start_demo()
