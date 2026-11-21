@@ -38,13 +38,25 @@ godot --path . scenes/main.tscn
 | `←` / `→` | 面板内切带 |
 | `↑` / `↓` | 面板内快进 / 快退 10 秒 |
 | `Esc` | 关面板；没有面板时离开机位 |
+| `R` | 失败后重试本轮；通关后重玩 demo |
 
-本机实机验证（2026-11-21，Godot 4.7.2）：按 `1` 切到 C1、`F` 让 npc_imaginary 沿路线走到终点、
-`I` 开灯、`T` 打开录像带面板并能切带（T-01 → T-02）、`↑` 快进。注意：默认磁带库的
-`known_to_player` 都是 `false`，面板只显示**已发现**的带；实机验证前先用
-`TapeArchive.discover(tape_id)` 发现 2–3 盘，否则面板只显示「还没有已发现的录像带」。
+### 1.2 可玩 demo（序章，3 轮）
+
+`scenes/main.tscn` 启动即进入 demo（`auto_tick == true` 时 `_ready` 自动 `start_demo()`）：
+
+- **目标**：每轮 60 秒内按 `F` 让 npc_imaginary 跟随并走到门口（route 终点）；到达即本轮成功；
+- **3 轮**；每轮得分 = `100 + 剩余秒数`；烧毁摄像头每台 `−30`（烧毁永久，M16）；
+- **失败**：超时 → 本轮失败，按 `R` 重试同一轮；**通关**：3 轮完成，按 `R` 重玩；
+- 每轮开始自动解锁一盘磁带给录像带面板（demo 的简化线索获取，正式版应改为场景拾取）；
+- 验收：`tests/test_prologue_demo.gd`（31 条断言：通关、超时重试、烧毁扣分、HUD、磁带解锁）。
+
+这是验证「目标 / 计时 / 失败 / 重开」骨架的可玩 demo；敌人、危险、剧情化目标还没接。
+`auto_tick == false`（headless 测试）时不会自动开局，测试用 `start_demo()` 显式驱动。
+
+录像带面板只显示已发现的带（默认库 `known_to_player=false`）：demo 每轮自动解锁一盘；
+手动验证时也可用 `TapeArchive.discover(tape_id)` 先发现 2–3 盘，再按 `T` / `←→` / `↑↓` 验证。
 面板打开时只响应录像带相关按键（`T` / `←→` / `↑↓` / `Esc`），避免后台误切机位。
-`Space` 与 W8 的 `player_jump` 同为空格，但 W8 未接进本场景（跳跃也默认关闭），未来同场时需定优先级。
+`Space` 与 W8 的 `player_jump` 同为空格，但 W8 未接进本场景（跳跃默认关闭），未来同场时需定优先级。
 
 ```text
 Main (scenes/main.tscn)

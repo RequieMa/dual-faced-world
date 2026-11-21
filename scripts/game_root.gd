@@ -58,6 +58,7 @@ const INPUT_ACTIONS := {
 	"game_tape_forward": KEY_UP,
 	"game_tape_back": KEY_DOWN,
 	"game_close": KEY_ESCAPE,
+	"game_restart": KEY_R,
 }
 
 const HINT_TEXTS := {
@@ -108,6 +109,22 @@ var _tape_index: int = 0
 var _tape_time: float = 0.0
 const TAPE_SEEK_STEP := 10.0
 
+## 可玩 demo（序章）：数据驱动的轮次目标，剧情以后重设计也不影响这套骨架。
+const DEMO_ROUNDS := 3
+const DEMO_ROUND_TIME := 60.0
+const DEMO_ROUND_SCORE := 100
+const DEMO_BURN_PENALTY := 30
+const DEMO_TARGET_NPC := "npc_imaginary"
+
+var _demo_round: int = 0
+var _demo_score: int = 0
+var _demo_time_left: float = 0.0
+var _demo_phase: String = "idle"
+var _demo_message: String = ""
+var _demo_round_burned: Array[String] = []
+var _demo_hud: CanvasLayer = null
+var _demo_label: Label = null
+
 
 func _ready() -> void:
 	_build_systems()
@@ -120,6 +137,8 @@ func _ready() -> void:
 	_capture_world_initial_state()
 	_refresh_hud()
 	set_process(auto_tick)
+	if auto_tick:
+		start_demo()
 
 
 func _exit_tree() -> void:
@@ -367,6 +386,9 @@ func handle_action(action: String) -> bool:
 			return _action_tape_seek(-TAPE_SEEK_STEP)
 		"game_close":
 			return _action_close()
+		"game_restart":
+			_demo_retry()
+			return true
 		_:
 			return false
 
@@ -604,6 +626,145 @@ func get_tape_state() -> Dictionary:
 	}
 
 
+# --- 可玩 demo（序章） -----------------------------------------------------------
+
+## 3 轮目标：每轮限时把朋友（npc_imaginary）引导到门口。
+## 到达 = NPC 的 waypoint_index 走完 route 并进入 WAIT；超时 = 本轮失败，按 R 重试。
+## 分数 = 每轮 100 + 剩余秒数，烧毁摄像头每台 -30（永久烧毁，符合 M16）。
+func start_demo() -> void:
+	_demo_round = 1
+	_demo_score = 0
+	_demo_phase = "playing"
+	_begin_demo_round()
+
+
+func is_demo_active() -> bool:
+	return _demo_phase == "playing"
+
+
+func get_demo_state() -> Dictionary:
+	return {
+		"phase": _demo_phase,
+		"round": _demo_round,
+		"rounds": DEMO_ROUNDS,
+		"time_left": _demo_time_left,
+		"score": _demo_score,
+		"message": _demo_message,
+		"burned": _burned_cameras(),
+	}
+
+
+func _begin_demo_round() -> void:
+	_demo_time_left = DEMO_ROUND_TIME
+	_demo_round_burned = _burned_cameras()
+	_demo_message = "第 %d/%d 轮：按 F 让朋友跟上，带他到门口" % [_demo_round, DEMO_ROUNDS]
+	if _loop_manager.get_round_index() == 0:
+		start_round()
+	else:
+		restart_round(0.0)
+	_discover_next_tape()
+	_ensure_demo_hud()
+	_refresh_demo_hud()
+
+
+func _update_demo(delta: float) -> void:
+	if _demo_phase != "playing":
+		return
+	_demo_time_left = maxf(0.0, _demo_time_left - delta)
+	_apply_burn_penalty()
+	if _demo_target_arrived():
+		_complete_demo_round()
+	elif _demo_time_left <= 0.0:
+		_demo_fail("超时")
+	_refresh_demo_hud()
+
+
+func _demo_target_arrived() -> bool:
+	var npc = _npcs.get(DEMO_TARGET_NPC)
+	if npc == null or not is_instance_valid(npc):
+		return false
+	var npc_state: Dictionary = npc.get_state()
+	return String(npc_state.get("state", "")) == "WAIT" \
+		and int(npc_state.get("route_size", 0)) > 0 \
+		and int(npc_state.get("waypoint_index", 0)) >= int(npc_state.get("route_size", 0))
+
+
+func _apply_burn_penalty() -> void:
+	for camera_id in _burned_cameras():
+		if _demo_round_burned.has(camera_id):
+			continue
+		_demo_round_burned.append(camera_id)
+		_demo_score -= DEMO_BURN_PENALTY
+		_demo_message = "摄像头 %s 过载烧毁，扣 %d 分" % [camera_id, DEMO_BURN_PENALTY]
+
+
+func _complete_demo_round() -> void:
+	_demo_score += DEMO_ROUND_SCORE + int(ceil(_demo_time_left))
+	if _demo_round >= DEMO_ROUNDS:
+		_demo_phase = "won"
+		_demo_message = "演示通关 · 得分 %d（按 R 重玩）" % _demo_score
+	else:
+		_demo_round += 1
+		_begin_demo_round()
+
+
+func _demo_fail(reason: String) -> void:
+	_demo_phase = "lost"
+	_demo_message = "本轮失败：%s（按 R 重试）" % reason
+
+
+func _demo_retry() -> void:
+	if _demo_phase == "lost":
+		_demo_phase = "playing"
+		_begin_demo_round()
+	elif _demo_phase == "won":
+		start_demo()
+
+
+func _burned_cameras() -> Array[String]:
+	var burned: Array[String] = []
+	if not is_instance_valid(_camera_session):
+		return burned
+	for camera_id in _camera_session.get_state().get("burned", []):
+		burned.append(String(camera_id))
+	return burned
+
+
+func _discover_next_tape() -> void:
+	var archive = get_node_or_null("/root/TapeArchive")
+	if archive == null or not archive.has_method("get_tapes"):
+		return
+	if archive.has_method("load_default_library") and archive.get_tapes().is_empty():
+		archive.load_default_library()
+	for tape in archive.get_tapes():
+		if not bool(tape.known_to_player):
+			archive.discover(String(tape.tape_id))
+			return
+
+
+func _ensure_demo_hud() -> void:
+	if _demo_hud != null:
+		return
+	_demo_hud = CanvasLayer.new()
+	_demo_hud.name = "DemoHud"
+	add_child(_demo_hud)
+	_demo_label = Label.new()
+	_demo_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_demo_label.offset_left = -460.0
+	_demo_label.offset_top = 20.0
+	_demo_label.offset_right = -24.0
+	_demo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_demo_label.add_theme_font_size_override("font_size", 18)
+	_demo_hud.add_child(_demo_label)
+
+
+func _refresh_demo_hud() -> void:
+	if _demo_label == null:
+		return
+	_demo_label.text = "第 %d/%d 轮 ｜ 剩余 %ds ｜ 得分 %d\n%s" % [
+		_demo_round, DEMO_ROUNDS, int(ceil(_demo_time_left)), _demo_score, _demo_message]
+
+
 # --- HUD -----------------------------------------------------------------------
 
 func _refresh_hud() -> void:
@@ -645,6 +806,7 @@ func tick(delta: float) -> void:
 		var npc = _npcs[target_id]
 		if is_instance_valid(npc) and npc.has_method("tick"):
 			npc.tick(delta)
+	_update_demo(delta)
 
 
 # --- 摄像头（W1） ---------------------------------------------------------------
