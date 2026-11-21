@@ -21,7 +21,8 @@ godot --path . scenes/<name>.tscn
 
 - `scenes/main.tscn`：游戏入口，实例化 `scenes/game_root.tscn`（W12 集成装配）
 - `scenes/game_root.tscn`：W12 集成场景（摄像头 / 引导 / 对话 / 双画风 / 循环），
-  玩法与接线见 [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)
+  玩法与接线见 [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)；设计决定见
+  [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)
 - `scenes/monitor_grid_demo.tscn`：监控墙 4 路放大 transition
 - `scenes/theater_monitor.tscn` / `scenes/theater_map.tscn`：剧院地图与监控
 - `scenes/integrated_sim.tscn`：集成 simulation（档案回放 + 实时推进 + 线索板）
