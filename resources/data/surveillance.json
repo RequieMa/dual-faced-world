@@ -1,0 +1,9 @@
+{
+  "$comment": "surveillance.json：机位 -> 停留时长 / 冷却时长（秒）。数值由策划在真实试玩后定，代码里不写死。",
+  "cameras": {
+    "C1": { "dwell": 6.0, "cooldown": 4.0 },
+    "C2": { "dwell": 5.0, "cooldown": 3.0 },
+    "C3": { "dwell": 4.0, "cooldown": 2.5 },
+    "C4": { "dwell": 7.0, "cooldown": 5.0 }
+  }
+}
