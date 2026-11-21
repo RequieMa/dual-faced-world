@@ -197,6 +197,14 @@ func _test_configure() -> void:
 	_check("未知 kind 的配置写 last_errors", hazard.last_errors.size() == 1)
 	_check("未知 kind 的配置发 definition_error", errors.size() == 2)
 
+	# W0 §0 从严：NaN/INF 会写出「永远不会结束」的危险，必须拒绝。
+	hazard.configure({"flash": {"duration": NAN, "radius": INF}})
+	_check("非有限数 duration/radius 各写一条 last_errors", hazard.last_errors.size() == 2)
+	_check("非有限数 duration/radius 各发一次 definition_error", errors.size() == 4)
+	_check("非有限值不覆盖已生效的 duration/radius",
+		is_equal_approx(float((_kinds(hazard)["flash"] as Dictionary)["duration"]), 0.5)
+		and is_equal_approx(float((_kinds(hazard)["flash"] as Dictionary)["radius"]), 5.0))
+
 	hazard.configure({"flash": {"duration": 1.0}})
 	_check("合法 configure 再次清空 last_errors", hazard.last_errors.is_empty())
 	hazard.free()
@@ -253,20 +261,24 @@ func _test_overload_blocks_enemy() -> void:
 		return positions.get(camera_id)
 	hazard.bind_overload_source(camera, lookup)
 
-	patrol.tick(1.0)
-	_check("过载前敌人正常推进到 x=2", patrol.get_position().is_equal_approx(Vector3(2, 0, 0)))
-	camera.overload("C3")
+	var short_rule: Dictionary = _kinds(hazard)["short"]
+	var radius := float(short_rule["radius"])
+	var boundary := 4.0 - radius
+
 	patrol.tick(0.5)
-	_check("过载危险出现后敌人停在危险边界",
-		patrol.get_position().is_equal_approx(Vector3(2, 0, 0)))
+	_check("过载前敌人正常推进到 x=1", patrol.get_position().is_equal_approx(Vector3(1, 0, 0)))
+	camera.overload("C3")
+	patrol.tick(2.0)
+	_check("危险出现在前进路径时停在边界附近",
+		absf(patrol.get_position().x - boundary) <= 0.11)
 	_check("敌人被挡时发 blocked_by_hazard", blocked.size() == 1)
 	_check("blocked_by_hazard 带危险 id", not String(blocked[0]).is_empty())
 
-	var short_duration := float((_kinds(hazard)["short"] as Dictionary)["duration"])
+	var short_duration := float(short_rule["duration"])
+	var blocked_x: float = patrol.get_position().x
 	hazard.tick(short_duration + 0.1)
 	patrol.tick(0.5)
-	_check("危险结束后敌人恢复巡逻",
-		patrol.get_position().is_equal_approx(Vector3(3, 0, 0)))
+	_check("危险结束后敌人恢复巡逻", patrol.get_position().x > blocked_x + 0.5 - 0.01)
 	patrol.free()
 	hazard.free()
 

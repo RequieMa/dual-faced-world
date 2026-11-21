@@ -58,6 +58,9 @@ func _process(_delta: float) -> bool:
 	_test_patrol_spotted_signal()
 	_test_patrol_blocked_by_hazard()
 	_test_patrol_blocked_with_callable_source()
+	_test_patrol_does_not_tunnel_into_hazard()
+	_test_patrol_static_guard()
+	_test_patrol_node_target()
 	_test_patrol_state()
 	_report()
 	return false
@@ -67,8 +70,12 @@ func _process(_delta: float) -> bool:
 
 func _test_cone_unconfigured() -> void:
 	var cone = load(CONE_PATH).new()
+	var debug: Dictionary = cone.get_debug_state()
 	_check("未 setup 的锥体看不见任何点", not cone.sees(Vector3(0, 0, 5)))
-	_check("未 setup 的锥体 debug 状态为空射程", bool(cone.get_debug_state().has("range_m")))
+	_check("未 setup 的锥体报告 configured=false", not bool(debug.get("configured", true)))
+	_check("未 setup 的锥体保留默认半角/射程",
+		is_equal_approx(float(debug.get("half_angle_deg", -1.0)), 45.0)
+		and is_equal_approx(float(debug.get("range_m", -1.0)), 10.0))
 	cone.free()
 
 
@@ -222,7 +229,7 @@ func _test_patrol_vision() -> void:
 	_check("巡逻看不见射程外目标", not patrol.sees(Vector3(11, 0, 0)))
 	patrol.tick(2.0)
 	_check("巡逻移动后视锥原点跟随", patrol.sees(Vector3(8, 0, 0)))
-	_check("巡逻移动后原位置目标超出射程", not patrol.sees(Vector3(-5, 0, 0)))
+	_check("巡逻移动后远处目标超出射程", not patrol.sees(Vector3(15, 0, 0)))
 	patrol.free()
 
 	var turned = _make_patrol([Vector3(0, 0, 0), Vector3(0, 0, 10)], 2.0)
@@ -305,6 +312,49 @@ func _test_patrol_blocked_with_callable_source() -> void:
 	patrol.free()
 
 
+func _test_patrol_does_not_tunnel_into_hazard() -> void:
+	# 验收补充：危险出现在前进路径上时，大 delta 也不能一步穿进危险区。
+	var patrol = _make_patrol([Vector3(0, 0, 0), Vector3(10, 0, 0)], 2.0)
+	var source := FakeHazardSource.new()
+	source.origin = Vector3(4, 0, 0)
+	source.radius = 2.0
+	source.active = ["H3"]
+	patrol.set_hazard_source(source)
+	var blocked: Array = []
+	patrol.blocked_by_hazard.connect(func(hazard_id: String) -> void: blocked.append(hazard_id))
+
+	patrol.tick(2.0)
+	_check("大 delta 前进不穿进新危险区（停在边界附近）",
+		absf(patrol.get_position().x - 2.0) <= 0.11)
+	_check("路径采样发现危险时发 blocked_by_hazard",
+		blocked.size() == 1 and String(blocked[0]) == "H3")
+	patrol.tick(0.1)
+	_check("贴着危险边界不重复发信号", blocked.size() == 1)
+	source.active.clear()
+	patrol.tick(1.0)
+	_check("危险解除后继续推进", patrol.get_position().x > 2.5)
+	patrol.free()
+
+
+func _test_patrol_static_guard() -> void:
+	# 单 waypoint 的站桩守卫没有移动方向，需要显式朝向才能形成视野。
+	var guard = _make_patrol([Vector3(0, 0, 0)], 0.0)
+	guard.set_facing(Vector3(0, 0, -1))
+	_check("站桩守卫按 set_facing 看见正面目标", guard.sees(Vector3(0, 0, -5)))
+	_check("站桩守卫看不见背面目标", not guard.sees(Vector3(0, 0, 5)))
+	guard.free()
+
+
+func _test_patrol_node_target() -> void:
+	# 未入树的 Node3D 调 get_global_position() 会报错并返回原点；应退回本地 position。
+	var patrol = _make_patrol([Vector3(0, 0, 0), Vector3(10, 0, 0)], 2.0)
+	var marker := Node3D.new()
+	marker.position = Vector3(5, 0, 0)
+	_check("未入树 Node3D 目标按 position 判定", patrol.sees(marker))
+	patrol.free()
+	marker.free()
+
+
 func _test_patrol_state() -> void:
 	var patrol = _make_patrol([Vector3(0, 0, 0), Vector3(10, 0, 0)], 2.0)
 	patrol.tick(1.0)
@@ -314,7 +364,10 @@ func _test_patrol_state() -> void:
 	_check("get_state 报告速度", is_equal_approx(float(state.get("speed", -1.0)), 2.0))
 	_check("get_state 报告 waypoint 数量", int(state.get("waypoint_count", -1)) == 2)
 	_check("get_state 报告下一段索引", int(state.get("next_index", -1)) == 1)
-	_check("get_state 报告视锥参数", state.has("vision"))
+	var vision: Dictionary = state.get("vision", {})
+	_check("get_state 报告视锥半角/射程",
+		is_equal_approx(float(vision.get("half_angle_deg", -1.0)), 45.0)
+		and is_equal_approx(float(vision.get("range_m", -1.0)), 10.0))
 	patrol.free()
 
 

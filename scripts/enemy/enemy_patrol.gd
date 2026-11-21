@@ -18,6 +18,9 @@ const DEFAULT_RANGE_M := 10.0
 const TIME_EPSILON := 0.000001
 ## 重复 waypoint 理论上会让 while 原地打转；折叠后仍留一道保险。
 const MAX_STEPS_PER_TICK := 1000
+## 危险阻挡的路径采样步长：大 delta 时也不能一步跨进新出现的危险区。
+const HAZARD_PROBE_STEP_M := 0.1
+const MAX_HAZARD_PROBES := 256
 
 signal spotted(target_id: String)
 signal blocked_by_hazard(hazard_id: String)
@@ -102,16 +105,20 @@ func tick(delta: float) -> void:
 			_advance_waypoint()
 			continue
 		_direction = offset / distance
-		if distance <= remaining + TIME_EPSILON:
-			# 到达 waypoint：吸附到点，剩余距离继续走下一段（下个 tick 再转向）。
+		var travel := minf(remaining, distance)
+		# 先沿本段路径扫危险：不能因为一次 tick 位移很大就穿进危险区。
+		var blocker := _first_blocker_on_path(_position, _direction, travel)
+		if not blocker.is_empty():
+			_position += _direction * float(blocker["distance"])
+			_set_blocking_ids(blocker["ids"])
+			return
+		_position += _direction * travel
+		remaining -= travel
+		if travel >= distance - TIME_EPSILON:
 			_position = target
-			remaining -= distance
 			_advance_waypoint()
-			if remaining <= TIME_EPSILON:
-				break
-		else:
-			_position += _direction * remaining
-			remaining = 0.0
+		if remaining <= TIME_EPSILON:
+			break
 
 
 ## 目标是否在视锥内。target 支持 Vector3 / {id, position} / 带位置的对象；
@@ -139,6 +146,14 @@ func set_vision(half_angle_deg: float, range_m: float) -> void:
 	_half_angle_deg = half_angle_deg
 	_range_m = range_m
 	_refresh_cone_setup()
+
+
+## 站桩守卫用：显式指定朝向。移动巡逻每个 tick 会按路径重算朝向并覆盖它。
+func set_facing(direction: Vector3) -> void:
+	if direction.length_squared() <= TIME_EPSILON:
+		_direction = Vector3.ZERO
+	else:
+		_direction = direction.normalized()
 
 
 ## 接线危险源：Object 需提供 blocking_hazards_at(position) -> Array；
@@ -207,13 +222,38 @@ func _refresh_cone_setup() -> void:
 
 
 func _update_blocking() -> void:
-	var blocking := _hazard_ids_at(_position)
+	_set_blocking_ids(_hazard_ids_at(_position))
+
+
+## 记录当前挡住敌人的危险；同 tick 内重复 id 只算一次，边沿触发不重复发信号。
+func _set_blocking_ids(ids: Array) -> void:
 	var still_blocked: Array[String] = []
-	for hazard_id in blocking:
+	for raw_id in ids:
+		var hazard_id := String(raw_id)
+		if still_blocked.has(hazard_id):
+			continue
 		if not _blocked_ids.has(hazard_id):
 			blocked_by_hazard.emit(hazard_id)
 		still_blocked.append(hazard_id)
 	_blocked_ids = still_blocked
+
+
+## 沿 origin → origin + direction * distance 采样，返回第一个被危险挡住的位置。
+## 大 delta 时按 MAX_HAZARD_PROBES 自适应放大步长，保证采样次数有上限。
+func _first_blocker_on_path(origin: Vector3, direction: Vector3, distance: float) -> Dictionary:
+	if distance <= TIME_EPSILON:
+		return {}
+	var step := HAZARD_PROBE_STEP_M
+	var probe_count := int(ceil(distance / step))
+	if probe_count > MAX_HAZARD_PROBES:
+		step = distance / float(MAX_HAZARD_PROBES)
+	var travelled := 0.0
+	while travelled < distance - TIME_EPSILON:
+		travelled = minf(travelled + step, distance)
+		var ids := _hazard_ids_at(origin + direction * travelled)
+		if not ids.is_empty():
+			return {"distance": travelled, "ids": ids}
+	return {}
 
 
 func _hazard_ids_at(position: Vector3) -> Array[String]:
@@ -250,14 +290,19 @@ func _target_point(target: Variant) -> Variant:
 		return null
 	if target is Object:
 		var object: Object = target
-		if object.has_method("get_global_position"):
-			var global_value: Variant = object.call("get_global_position")
-			if global_value is Vector3:
-				return global_value
-		var property_value: Variant = object.get("global_position")
-		if property_value is Vector3:
-			return property_value
-		property_value = object.get("position")
+		# 未入树的 Node3D 调 get_global_position() 会报错并返回原点，改用本地 position。
+		var inside_tree := true
+		if object is Node:
+			inside_tree = (object as Node).is_inside_tree()
+		if inside_tree:
+			if object.has_method("get_global_position"):
+				var global_value: Variant = object.call("get_global_position")
+				if global_value is Vector3:
+					return global_value
+			var global_property: Variant = object.get("global_position")
+			if global_property is Vector3:
+				return global_property
+		var property_value: Variant = object.get("position")
 		if property_value is Vector3:
 			return property_value
 	return null

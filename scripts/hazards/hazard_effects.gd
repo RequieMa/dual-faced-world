@@ -16,7 +16,6 @@ extends Node
 const KIND_FLASH := "flash"
 const KIND_SHORT := "short"
 const KIND_FIRE := "fire"
-const KINDS: Array[String] = [KIND_FLASH, KIND_SHORT, KIND_FIRE]
 
 ## 默认值：既能挡住一次巡逻，又不会永久封锁房间。策划要调时走 configure()。
 const DEFAULT_RULES := {
@@ -131,6 +130,7 @@ func get_state() -> Dictionary:
 func configure(config: Dictionary) -> void:
 	last_errors.clear()
 	var rules_value: Variant = config
+	# 支持 { kind: {...} } 与 { "kinds": { kind: {...} } }；带 "kinds" 时顶层其它键忽略。
 	if config.has("kinds"):
 		rules_value = config["kinds"]
 		if not rules_value is Dictionary:
@@ -198,10 +198,14 @@ func _apply_rule(kind: String, rule: Dictionary) -> void:
 		if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
 			_report_error("HazardEffects.configure: %s.%s 必须是数字" % [kind, key])
 			continue
-		if float(value) < 0.0:
+		var number := float(value)
+		if not is_finite(number):
+			_report_error("HazardEffects.configure: %s.%s 必须是有限数" % [kind, key])
+			continue
+		if number < 0.0:
 			_report_error("HazardEffects.configure: %s.%s 不能为负" % [kind, key])
 			continue
-		_rules[kind][key] = float(value)
+		_rules[kind][key] = number
 	if rule.has("blocking"):
 		var blocking_value: Variant = rule["blocking"]
 		if typeof(blocking_value) != TYPE_BOOL:
