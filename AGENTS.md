@@ -14,7 +14,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 
 - 禁止直接 push 到 `main` / `develop` / `release`。
 - 禁止 force push 到任何共享分支。
-- 禁止 merge 自己开的 PR。
+- **PR 由作者自己合并**：CI 全绿 + 独立评审无阻塞项即可 squash 合并，不再等人批准（规则集已把 required review 设为 0）。
 - 共享分支启用了 required linear history：PR 用 Squash / Rebase 合并，禁止 merge commit。
 
 ## 2. 接单流程（每一步都必须做）
@@ -49,7 +49,13 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 8. **推送**：`git push -u origin feature-<slug>`
 9. **开 PR**：`gh pr create --base develop --head feature-<slug>`。
    描述必须包含：工单链接、TDD 证据（红/绿命令与结果）、自检、reviewer 结论、风险。
-10. **停在 PR**：不要合并自己的 PR，等 reviewer / 人批准后由他人合并。
+10. **合并**：等 CI 全绿、reviewer 明确「可合并」后由作者自己合并：
+
+    ```sh
+    gh pr merge <n> --squash --delete-branch
+    ```
+
+    合并后关掉对应 issue（PR 未写 `closes #N` 时手动 `gh issue close`）。CI 红或有阻塞项时不得合并。
 
 ## 3. TDD 与测试
 
@@ -69,6 +75,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 
 - 只读，不改代码。
 - 输出四段：**阻塞项 / 建议项 / 测试是否可信 / 是否可合并**。
+- 「是否可合并」是合并门槛：有阻塞项时作者不得合并；修完需复审一次。
 - 重点检查：需求覆盖、边界条件、测试是否真的会失败、是否有隐藏行为变更、Godot 4.x 兼容性、是否夹带大文件。
 
 ## 5. Release 与 Hotfix
@@ -105,3 +112,4 @@ hotfix 合并进 `release` 后，必须把 `release` 回合 `develop`（PR 或 f
 - 提交 `external-assets/` 内容、`.godot/`、`autoload/`、密钥
 - 用 `--no-verify` 跳过 hooks
 - 把 stateDir、日志、截图提交进仓库
+- 在 CI 未绿或 reviewer 仍有阻塞项时合并 PR

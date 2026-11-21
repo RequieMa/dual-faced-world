@@ -39,4 +39,5 @@
 ## 合并要求
 
 - [ ] 目标分支是 `develop`（hotfix 才是 `release`）
-- [ ] 作者不合并自己的 PR
+- [ ] CI 全绿、reviewer 结论为「可合并」
+- [ ] 由作者 squash 合并并删除分支（不再等人工 review）
