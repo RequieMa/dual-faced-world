@@ -64,7 +64,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if auto_tick:
-		tick(delta)
+		# 切窗/卡顿会产生 5s+ 的 delta；限步避免一帧把摄像头直接烧掉。
+		tick(minf(delta, 0.1))
 
 
 # --- 装配 ---------------------------------------------------------------------
@@ -100,8 +101,9 @@ func _build_systems() -> void:
 func _load_data() -> void:
 	if not _camera_config.load_into(_camera_session, SURVEILLANCE_PATH):
 		_fail("surveillance 配置加载失败: %s" % _join_errors(_camera_config.last_errors))
-	if not _dialogue_controller.load_defs(DIALOGUES_PATH):
-		_fail("对话定义加载失败: %s" % DIALOGUES_PATH)
+	# 对话加载失败已经由 DialogueController.error_occurred -> _on_dialogue_error -> _fail
+	# 记录一次，这里不再重复追加。
+	_dialogue_controller.load_defs(DIALOGUES_PATH)
 
 
 func _bind_world() -> void:
@@ -120,6 +122,8 @@ func _scan_world(node: Node) -> void:
 		if not target_id.is_empty() and _guide_bus.register_target(target_id, node):
 			if node.has_method("on_hint"):
 				_npcs[target_id] = node
+				var raw_group: Variant = node.get("group")
+				_tag_style_group(node, raw_group if raw_group is String else "")
 			elif node.has_method("is_on"):
 				_lights[target_id] = node
 			elif node.has_method("is_open"):
@@ -130,6 +134,24 @@ func _scan_world(node: Node) -> void:
 			_guide_bus.hint_sent.connect(callback)
 	for child in node.get_children():
 		_scan_world(child)
+
+
+## 把 NPC 的网格挂到 StyleController 消费的组（real / imaginary）。
+## 网格是 GuideableNpc 在 _ready 里代码生成的，场景文件无法直接打组；
+## 这里在 World 绑定阶段补齐，否则 W4 的 apply_style 只会翻开关、套不到任何节点。
+func _tag_style_group(node: Node, group: String) -> void:
+	var canonical := group.strip_edges().to_lower()
+	if canonical != "real" and canonical != "imaginary":
+		return
+	_add_group_recursive(node, canonical)
+
+
+func _add_group_recursive(node: Node, group: String) -> void:
+	# 只标网格，不把 Label3D 也套上空间 shader。
+	if node is MeshInstance3D and not node.is_in_group(group):
+		node.add_to_group(group)
+	for child in node.get_children():
+		_add_group_recursive(child, group)
 
 
 func _capture_world_initial_state() -> void:

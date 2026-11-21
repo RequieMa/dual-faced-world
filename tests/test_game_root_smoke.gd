@@ -25,7 +25,7 @@ const REQUIRED_SIGNALS: Array[String] = [
 	"camera_overloaded", "hint_sent", "round_started", "round_ended", "definition_error",
 ]
 ## 全绿时应执行的断言数：运行时错误会中止当前用例，靠数量守恒抓住「假绿」。
-const EXPECTED_CHECKS := 76
+const EXPECTED_CHECKS := 87
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -77,6 +77,8 @@ func _run_tests() -> void:
 	# 关掉自动 tick：headless 测试用固定步长复现过载，不依赖真实帧率。
 	if "auto_tick" in instance:
 		instance.auto_tick = false
+	# 在入树前接线，才能捕获 _ready 里装配/加载失败的 definition_error。
+	instance.definition_error.connect(func(message): _events.append(["definition_error", message]))
 	_game_root = instance
 	root.add_child(_game_root)
 
@@ -87,6 +89,7 @@ func _run_tests() -> void:
 	_test_dialogue()
 	_test_style()
 	_test_state()
+	_test_main_entry()
 
 	_game_root.queue_free()
 	_report()
@@ -103,13 +106,13 @@ func _test_assembly() -> void:
 
 	var bus = _game_root.get_guide_bus()
 	var targets: Array = bus.get_targets() if bus != null else []
-	_check("场景目标已注册到 GuideBus", targets.size() >= 3, str(targets))
+	_check("场景目标已注册到 GuideBus", targets.size() == 4, str(targets))
 	_check("注册了可引导 NPC npc_real", targets.has("npc_real"), str(targets))
 	_check("注册了指示灯 light_a", targets.has("light_a"), str(targets))
 	_check("注册了门 door_a", targets.has("door_a"), str(targets))
 
 	# 装配失败（配置/对话定义坏掉）时应该走 definition_error，而不是静默。
-	_game_root.definition_error.connect(func(message): _events.append(["definition_error", message]))
+	_check("装配期没有 definition_error", _count_events("definition_error") == 0, str(_events))
 	_check("surveillance 配置加载成功", _game_root.last_errors.is_empty(), str(_game_root.last_errors))
 
 
@@ -126,18 +129,20 @@ func _test_camera_switch_and_overload() -> void:
 
 	_check("切到 C2", _game_root.switch_camera("C2"))
 	_check("当前机位是 C2", session.get_state()["current"] == "C2", str(session.get_state()))
+	_check("冷却中切回 C1 失败", not _game_root.switch_camera("C1"))
 
-	# C2 dwell = 5.0s；用固定步长推进到过载。
-	_game_root.tick(5.1)
+	# 用远大于 dwell 的固定步长推进到过载，避免把测试绑死在 surveillance.json 的具体数值上。
+	_game_root.tick(30.0)
 	var state: Dictionary = session.get_state()
 	_check("过载后离开当前机位", state["current"] == "", str(state))
 	_check("过载计数 +1", int(state["overload_count"]) == 1, str(state))
 	_check("C2 被烧毁", session.is_burned("C2"), str(state))
 	_check("广播一次 camera_overloaded", _count_events("camera_overloaded") == 1, str(_events))
+	_check("过载事件带机位 id", String(_event_value("camera_overloaded")) == "C2", str(_events))
 	_check("烧毁机位不能再次进入", not _game_root.switch_camera("C2"))
 
-	# 切走时 C1 进入冷却，切回失败；冷却按 tick 递减，结束后可再进。
-	_game_root.tick(10.0)
+	# 切走时 C1 进入冷却；tick 推进足够久后冷却结束，可再进。
+	_game_root.tick(30.0)
 	_check("冷却结束后可重新进入 C1", _game_root.switch_camera("C1"))
 	_game_root.leave_camera()
 	_check("leave 后没有当前机位", session.get_state()["current"] == "", str(session.get_state()))
@@ -152,6 +157,13 @@ func _test_guide() -> void:
 
 	_check("发送 follow 提示", _game_root.send_hint("npc_real", "follow"))
 	_check("hint_sent 广播一次", _count_events("hint_sent") == 1, str(_events))
+	var hint_event: Array = _event("hint_sent")
+	_check("hint 事件带目标与文本",
+		hint_event.size() > 2 and String(hint_event[1]) == "npc_real" and String(hint_event[2]) == "follow",
+		str(hint_event))
+	var speaker = _game_root.find_child("Speaker", true, false)
+	_check("扬声器收到 hint", speaker != null and int(speaker.get_state()["play_count"]) == 1,
+		"" if speaker == null else str(speaker.get_state()))
 	_check("NPC 进入 FOLLOW", npc != null and String(npc.get_state()["state"]) == "FOLLOW",
 		"" if npc == null else str(npc.get_state()))
 	_check("未知目标发送 hint 返回 false", not _game_root.send_hint("npc_nope", "follow"))
@@ -165,7 +177,7 @@ func _test_guide() -> void:
 	var door = _game_root.find_child("Door", true, false)
 	_check("门状态为 open", door != null and bool(door.is_open()))
 	_check("重复开门幂等", _game_root.open_door("door_a"))
-	_check("bus 目标数稳定", bus.get_targets().size() >= 3, str(bus.get_targets()))
+	_check("bus 目标数稳定", bus.get_targets().size() == 4, str(bus.get_targets()))
 
 
 # --- 循环 ---------------------------------------------------------------------
@@ -228,9 +240,13 @@ func _test_style() -> void:
 	var style = _game_root.get_style_controller()
 	_check("开启 real 画风", _game_root.apply_style("real", true))
 	_check("real 画风已启用", bool(style.get_state()["styles"]["real"]["enabled"]))
+	_check("real 画风覆盖到场景网格", int(style.get_state()["styles"]["real"]["applied_nodes"]) >= 1,
+		str(style.get_state()))
 	_check("未知画风被拒绝", not _game_root.apply_style("pencil", true))
 	_check("关闭 real 画风", _game_root.apply_style("real", false))
 	_check("real 画风已关闭", not bool(style.get_state()["styles"]["real"]["enabled"]))
+	_check("关闭后不再覆盖网格", int(style.get_state()["styles"]["real"]["applied_nodes"]) == 0,
+		str(style.get_state()))
 
 
 # --- 聚合状态 -----------------------------------------------------------------
@@ -240,6 +256,27 @@ func _test_state() -> void:
 	for key in ["camera", "guide", "loop", "dialogue", "style", "round_active"]:
 		_check("get_state 含 %s" % key, state.has(key), str(state.keys()))
 	_check("get_state.round_active 为 true", bool(state["round_active"]))
+
+
+# --- 主入口链路 ---------------------------------------------------------------
+
+func _test_main_entry() -> void:
+	# 结构断言之外，把 main.tscn 真正入树跑一次 _ready，确认入口链路可用。
+	var packed := ResourceLoader.load(MAIN_SCENE) as PackedScene
+	_check("主入口 PackedScene 可加载", packed != null)
+	if packed == null:
+		return
+	var instance := packed.instantiate()
+	var entry_root := instance.get_node_or_null("GameRoot")
+	_check("主入口含 GameRoot 子节点", entry_root != null)
+	if entry_root == null:
+		instance.free()
+		return
+	entry_root.auto_tick = false
+	root.add_child(instance)
+	_check("主入口 GameRoot 入树后装配系统", entry_root.get_camera_session() != null)
+	_check("主入口 GameRoot 可切摄像头", entry_root.switch_camera("C1"))
+	instance.queue_free()
 
 
 # --- 断言 / 工具 -------------------------------------------------------------
@@ -315,6 +352,13 @@ func _count_events(event_name: String) -> int:
 		if String(event[0]) == event_name:
 			count += 1
 	return count
+
+
+func _event(event_name: String) -> Array:
+	for event in _events:
+		if String(event[0]) == event_name:
+			return event
+	return []
 
 
 func _event_value(event_name: String) -> Variant:

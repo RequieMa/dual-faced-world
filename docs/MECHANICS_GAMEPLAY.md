@@ -52,8 +52,9 @@ Main (scenes/main.tscn)
 
 ### 计时与可复现性
 
-所有计时都由 `tick(delta)` 推进。`auto_tick` 默认开启（`_process` 里 tick），
-headless 测试把它关掉、用固定步长调用 `tick()`，不依赖真实帧率。
+所有计时都由 `tick(delta)` 推进。`auto_tick` 默认开启（`_process` 里 tick，单帧 delta 限步到 0.1s，
+避免切窗/卡顿一帧烧毁机位）；headless 测试把它关掉、用固定步长调用 `tick()`，不依赖真实帧率。
+`auto_tick` 只在 `_ready()` 读取，测试/宿主需要在 `add_child()` 之前设置。
 
 ### 循环重开语义
 
@@ -86,6 +87,9 @@ World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮�
 - 本 issue 的验收由 headless smoke 驱动：场景已装配并可运行，但还没接玩家输入
   （切机位 / 发 hint / 开关门等由后续玩法层接线），当前用于观察装配结果与跑自动化。
 - 摄像头**画面**仍由现有监控墙负责；GameRoot 只装配会话状态，不复制监控 UI。
+- 双画风目前只覆盖 World 里按 `real` / `imaginary` 打组的 NPC 网格（由 GameRoot 绑定 World 时补齐）；
+  地面/门框等占位几何未打组，开关画风不会改变它们。
+- `World` 节点缺失时只记录 `last_errors` / 发 `definition_error`，不中止启动（引导目标为空）。
 - W5 危险效果 / 盲区、W7 潜行、W8 亲身段落未接进本场景：它们的触发位置/输入需要先有
   关卡数据（`resources/data/levels/*.json`）和设计拍板（M16 等），超出本 issue 的验收范围。
 - 场景内的占位几何用于验证装配，不是最终美术。
