@@ -38,6 +38,7 @@
 
 ## 合并要求
 
-- [ ] 目标分支是 `develop`（hotfix 才是 `release`）
-- [ ] CI 全绿、reviewer 结论为「可合并」
-- [ ] 由作者 squash 合并并删除分支（不再等人工 review）
+- [ ] 目标分支正确：`feature-*`/`hotfix-*` → `develop`/`release`；`develop` → `release`；`release` → `main`
+- [ ] CI 全绿、reviewer 结论为「可合并」，结论原文已贴到 PR 评论
+- [ ] `feature-*` / `hotfix-*`：作者 squash 合并并删除分支
+- [ ] `develop→release` / `release→main`：release 负责人 rebase 合并，不删 `release`

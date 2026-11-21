@@ -52,11 +52,10 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 10. **合并**：等 CI 全绿、reviewer 明确「可合并」后由作者自己合并：
 
     ```sh
-    gh pr merge <n> --squash --delete-branch   # feature-* / hotfix-*
-    gh pr merge <n> --rebase                   # develop→release、release→main
+    gh pr merge <n> --squash --delete-branch   # 只用于 feature-* / hotfix-*
     ```
 
-    `--delete-branch` 只用于 `feature-*` / `hotfix-*`；`release` 是长期分支，合并后保留。
+    本节只覆盖 `feature-*` / `hotfix-*`；`develop→release`、`release→main` 一律由 release 负责人 rebase 合并且不删 `release`（见 §5）。
     合并后关掉对应 issue（PR 未写 `closes #N` 时手动 `gh issue close`）。CI 红或有阻塞项时不得合并。
 
 ## 3. TDD 与测试
@@ -104,8 +103,8 @@ hotfix 合并进 `release` 后，必须把 `release` 回合 `develop`（PR 或 f
 
 `release` 验证通过：
 
-1. 发 `release → main` 的 PR；
-2. 合并后在 `main` 打 tag：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
+1. 由 release 负责人发 `release → main` 的 PR（同样独立评审 + CI 全绿）；
+2. 由 release 负责人 `gh pr merge <n> --rebase` 合并（不删 `release`），然后在 `main` 打 tag：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
 3. tag 只打在 `main` 上；hotfix 发布用 patch 版本。
 
 ## 6. 禁止事项

@@ -73,7 +73,7 @@ git fetch origin
 git log --oneline origin/release..origin/develop   # 本轮要进 release 的提交
 ```
 
-然后开 `develop → release` 的 PR，合并方式选 **Rebase and merge**（或 Squash and merge）。
+然后由 release 负责人开 `develop → release` 的 PR，合并方式选 **Rebase and merge**（不删 `release`）。
 
 > 仓库 ruleset `release-for-testing` 对 `main` / `develop` / `release` 启用了
 > **required linear history**，因此禁止 merge commit；`git merge --no-ff` 会被拒绝。
@@ -82,7 +82,7 @@ git log --oneline origin/release..origin/develop   # 本轮要进 release 的提
 
 1. 在 `release` 上做端到端测试（编辑器/导出包/关键路径）。
 2. 发现问题：从 `release` 切 `hotfix-<slug>`，修完 PR 回 `release`，再回合 `develop`。
-3. 验证通过后开 `release → main` 的 PR（**Rebase and merge**）；合并后：
+3. 验证通过后由 release 负责人开 `release → main` 的 PR（**Rebase and merge**，不删 `release`）；合并后：
 
    ```sh
    git fetch origin
@@ -125,6 +125,7 @@ subject 用祈使句、≤ 72 字符；body 说明“为什么”，不要只写
 配套：
 
 - `.github/CODEOWNERS` 仅作路由；ruleset 的 `require_code_owner_review=false`，它不阻塞合并。
+- Worker 提交使用已归属 GitHub 的 `RequieMa-Agent` 身份（`gh-agent` credential helper）。实测 PR #24–#33 由该身份提交并直接合并，未触发额外 approval；换成未归属身份时 ruleset 会要求额外 approval。
 - **CI 不是 GitHub 强制项**：ruleset 未配置 required status checks，`headless` 绿只是流程要求。建议 admin 把 `headless` 加进 ruleset 的 required checks（Agent 账号 `admin=false`，改不了）。
 - 仍建议 admin 把默认分支从 `main` 改为 `develop`（Agent 账号 `admin=false`，改不了）。
 
