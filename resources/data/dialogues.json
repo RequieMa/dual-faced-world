@@ -1,0 +1,21 @@
+{
+  "$comment": "W3 两类对话框示例台词。group 只写规范值 real / imaginary（friend / stranger 是别名，不写进数据）。",
+  "dialogues": [
+    {
+      "id": "stranger_greeting",
+      "group": "real",
+      "lines": [
+        { "speaker": "路人", "text": "这儿晚上不开放，你也是来看展的？" },
+        { "speaker": "主角", "text": "……我好像在哪见过你。" }
+      ]
+    },
+    {
+      "id": "friend_whisper",
+      "group": "imaginary",
+      "lines": [
+        { "speaker": "朋友", "text": "别听他们的。只有我知道你真正想去哪。" },
+        { "speaker": "主角", "text": "你每次都这么说。" }
+      ]
+    }
+  ]
+}
