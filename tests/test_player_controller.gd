@@ -45,6 +45,7 @@ func _initialize() -> void:
 	_test_reset()
 	_test_input_shapes()
 	_test_action_section_toggle()
+	_test_jump_action_disabled_by_default()
 	_test_whole_section_toggle()
 	_test_setup_validation()
 	_test_input_actions()
@@ -90,7 +91,15 @@ func _new_jump_section() -> RefCounted:
 	return load(JUMP_SECTION).new()
 
 
+## 测试用控制器：默认把「跳跃动作段」打开（W8 组件在玩法层默认关闭，见设计决定）。
+## 要验证类默认值的用例请用 _new_raw_controller()。
 func _new_controller(config: Dictionary = {}) -> Node:
+	var merged := {"action_enabled": true}
+	merged.merge(config, true)
+	return _new_raw_controller(merged)
+
+
+func _new_raw_controller(config: Dictionary = {}) -> Node:
 	var controller: Node = load(PLAYER_CONTROLLER).new()
 	controller.setup(config)
 	return controller
@@ -389,6 +398,27 @@ func _test_action_section_toggle() -> void:
 	controller.set_action_enabled(true)
 	controller.tick(0.1, {"jump": true})
 	_check("运行时打开动作段后可以跳", int(controller.get_state()["jumps_used"]) == 1)
+	_dispose(controller)
+
+
+## 设计决定（2026-11-21，#20）：终章的二段跳动作段不保留。
+## 组件本身作为可选项保留，但 PlayerController 默认关闭跳跃动作段。
+func _test_jump_action_disabled_by_default() -> void:
+	var controller := _new_raw_controller()
+	var state: Dictionary = controller.get_state()
+	_check("PlayerController：二段跳动作段默认关闭（M15 不保留）", state["action_enabled"] == false)
+
+	controller.tick(0.1, {"jump": true})
+	state = controller.get_state()
+	_check("PlayerController：默认跳跃被拒绝",
+		state["grounded"] == true and int(state["jumps_used"]) == 0
+		and abs(float(state["position"].y)) < EPS, str(state))
+
+	controller.tick(0.1, {"jump": false})
+	controller.set_action_enabled(true)
+	controller.tick(0.1, {"jump": true})
+	_check("PlayerController：显式打开后仍可跳（组件保留为可选项）",
+		int(controller.get_state()["jumps_used"]) == 1)
 	_dispose(controller)
 
 

@@ -4,6 +4,12 @@
 把 W1–W8 的系统接进一个可运行场景，并用 headless smoke 固定「进场 → 摄像头 → 引导 →
 过载 → 循环重开」这条主链。
 
+## 0. 设计决定（2026-11-21，#20）
+
+owner 已拍板：玩法是**回放**（线索在录像带里），不是时间回溯；二段跳不保留；烧毁摄像头不恢复；
+数值用可配置 JSON。完整记录与影响见 [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)。
+本场景的实现按这套决定对齐：`LoopManager` 只做轮次/重开，`PlayerController.action_enabled` 默认关闭。
+
 ## 1. 入口与运行
 
 `scenes/main.tscn` 现在实例化 `scenes/game_root.tscn`，所以 `scenes/main.tscn` 仍是唯一入口：
@@ -56,11 +62,12 @@ Main (scenes/main.tscn)
 避免切窗/卡顿一帧烧毁机位）；headless 测试把它关掉、用固定步长调用 `tick()`，不依赖真实帧率。
 `auto_tick` 只在 `_ready()` 读取，测试/宿主需要在 `add_child()` 之前设置。
 
-### 循环重开语义
+### 轮次与重开语义（回放）
 
 `restart_round()` = 结束当前轮（若有）→ `rewind_to(time, [GameRoot])` → `start_round()`：
 
-- 摄像头：清空当前机位与冷却；**烧毁机位保持烧毁**（M16 未拍板前的契约默认）；
+- 这里的「rewind」是**回到录像带内的某一刻重开一轮**（设计决定 #20：玩法是回放，不是时间回溯）；
+- 摄像头：清空当前机位与冷却；**烧毁机位保持烧毁**（M16 已拍板：永久不恢复）；
 - NPC：用进入场景时的 `to_dict()` 快照复位（状态 / 位置 / 路线）；
 - 指示灯：复位到进入场景时的开关状态；
 - 门：`GuideableDoor` 没有 `close()`，开门状态不参与循环复位。
@@ -92,4 +99,6 @@ World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮�
 - `World` 节点缺失时只记录 `last_errors` / 发 `definition_error`，不中止启动（引导目标为空）。
 - W5 危险效果 / 盲区、W7 潜行、W8 亲身段落未接进本场景：它们的触发位置/输入需要先有
   关卡数据（`resources/data/levels/*.json`）和设计拍板（M16 等），超出本 issue 的验收范围。
+- W8 的二段跳动作段**不保留**（设计决定 #20）：`PlayerController.action_enabled` 默认 `false`，
+  `JumpSection` 仅作为可选项保留，不接任何关卡。
 - 场景内的占位几何用于验证装配，不是最终美术。
