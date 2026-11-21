@@ -32,9 +32,12 @@
   - 契约：`docs/MECHANICS_CONTRACTS.md`；装配：`docs/MECHANICS_GAMEPLAY.md`；场景：`scenes/game_root.tscn`
 - [x] 设计拍板对齐（Issue #20）：玩法改为「回放」、二段跳默认关、烧毁不恢复 —— 见 `docs/DESIGN_DECISIONS.md`
   - 数值：摄像头 `dwell` / `cooldown` 已走 `resources/data/surveillance.json`；交互半径、拖拽拾取半径仍是代码常量（后续可抽，见下）
-- [ ] 玩法闭环：把「回放查线索 → 监控引导 → 过载代价 → 重开一轮」接成可玩流程
-  - GameRoot 接玩家输入（切机位 / 发提示 / 开门 / 检查录像带）
-  - 关卡数据 `resources/data/levels/*.json`（房间 / 机位 / 初始状态）
+- [x] 玩法层输入 + 关卡数据：`GameRoot` 支持键盘操作（1–4 机位 / `F` `G` `O` 提示 / `I` 灯 / `H` 门 /
+  `Space` 对话 / `T` 录像带面板），关卡走 `resources/data/levels/theater.json`
+- [ ] 玩法闭环（目标/胜负）：把「回放查线索 → 监控引导 → 过载代价 → 重开一轮」接成完整流程
+  - 磁带拾取（场景里发现磁带 → TapeArchive.discover）
+  - 关卡目标与失败条件（例如：在第 N 轮内保住某个 NPC / 阻止舞台起火）
+  - 多轮目标推进与结局判定
 - [ ] 按 `docs/PUZZLE_LAB.md` 的清单把占位美术换成 CC0 素材（UI / 图标 / 音效 / 家具 / 字体）
 - [ ] 把交互半径 / 拖拽拾取半径等常量抽到数据文件（等真机试玩后再调）
 - [ ] 评估 `develop → release`；通过端到端测试后 `release → main` 并打 `v0.1.0`

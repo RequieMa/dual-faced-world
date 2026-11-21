@@ -23,6 +23,29 @@ godot --path . scenes/main.tscn
 `scenes/game_root.tscn` 只放「内容」（World 子树：地面、灯、相机、NPC、指示灯、门、扬声器），
 系统由根脚本 `scripts/game_root.gd` 在 `_ready()` 里 `new()` 出来并接线，不新增 autoload。
 
+### 1.1 操作（键盘，运行时注册，不写 `project.godot`）
+
+| 键 | 作用 |
+|---|---|
+| `1`–`4` | 切换关卡机位（`theater.json` 的 cameras 顺序：C1–C4） |
+| `0` | 离开当前机位（进入冷却） |
+| `F` / `G` / `O` | 对当前提示对象发「跟我来 / 等待 / 开门」 |
+| `Tab` | 切换提示对象（npc_imaginary ↔ npc_real） |
+| `I` | 开/关指示灯 `light_a` |
+| `H` | 打开门 `door_a` |
+| `Space` | 推进对话（没有进行中的对话时无效） |
+| `T` | 开/关录像带检查面板 |
+| `←` / `→` | 面板内切带 |
+| `↑` / `↓` | 面板内快进 / 快退 10 秒 |
+| `Esc` | 关面板；没有面板时离开机位 |
+
+本机实机验证（2026-11-21，Godot 4.7.2）：按 `1` 切到 C1、`F` 让 npc_imaginary 沿路线走到终点、
+`I` 开灯、`T` 打开录像带面板并能切带（T-01 → T-02）、`↑` 快进。注意：默认磁带库的
+`known_to_player` 都是 `false`，面板只显示**已发现**的带；实机验证前先用
+`TapeArchive.discover(tape_id)` 发现 2–3 盘，否则面板只显示「还没有已发现的录像带」。
+面板打开时只响应录像带相关按键（`T` / `←→` / `↑↓` / `Esc`），避免后台误切机位。
+`Space` 与 W8 的 `player_jump` 同为空格，但 W8 未接进本场景（跳跃也默认关闭），未来同场时需定优先级。
+
 ```text
 Main (scenes/main.tscn)
 └── GameRoot (scenes/game_root.tscn, scripts/game_root.gd)
@@ -75,24 +98,35 @@ Main (scenes/main.tscn)
 ## 3. 数据来源
 
 - 摄像头计时：`resources/data/surveillance.json`（经 `CameraConfig` + `ConfigLoader`）；
+- 关卡：`resources/data/levels/theater.json`（房间 / 机位，经 `level.schema.json` 校验；
+  加载失败时回落到默认机位并记录 `last_errors`）；装配期会拿 `level.cameras` 与
+  `surveillance.json` 做双向差集，不一致时 `push_warning` 并记入 `get_level_state().camera_mismatches`
+  （计时以 `surveillance.json` 为准）；
 - 对话：`resources/data/dialogues.json`；
-- 场景内容与 NPC 路线：直接写在 `scenes/game_root.tscn`（本 issue 不新增 data 文件）。
+- 录像带：`TapeArchive` autoload 的默认磁带库（`resources/tapes/*.tres`），面板只读展示事件与线索；
+- 场景内容与 NPC 路线：直接写在 `scenes/game_root.tscn`。
 
 ## 4. 端到端 smoke
 
 ```sh
 godot --headless --path . --script tests/test_game_root_smoke.gd
-godot --headless --path . --script tests/run_all.gd   # 全套回归
+godot --headless --path . --script tests/test_game_root_input.gd   # 输入 + 关卡数据
+godot --headless --path . --script tests/run_all.gd                # 全套回归
 ```
 
 `tests/test_game_root_smoke.gd` 覆盖：场景/脚本存在、主入口装配 GameRoot、五个系统已实例化、
 World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮起止与循环重开、
 重开后世界复位（烧毁机位保留）、对话两行播放、画风开关、聚合状态。
 
+`tests/test_game_root_input.gd` 覆盖：关卡数据 schema 校验、`get_level_state`、输入动作注册/清理、
+`handle_action` 的切机位/提示/灯/门/对话/录像带面板（开关、切带、快进快退）。
+
 ## 5. 已知限制
 
-- 本 issue 的验收由 headless smoke 驱动：场景已装配并可运行，但还没接玩家输入
-  （切机位 / 发 hint / 开关门等由后续玩法层接线），当前用于观察装配结果与跑自动化。
+- 玩法闭环还差「目标与胜负」：输入已接（切机位 / 提示 / 灯 / 门 / 对话 / 录像带检查），
+  但还没有「查录像 → 引导朋友 → 过载拖住敌人 → 重开」的完整关卡流程与失败条件。
+- 录像带面板只读展示 `TapeArchive` 的事件与 `ClueManager` 的线索，不改变线索状态；
+  磁带库目前全部是默认库（`resources/tapes/*.tres`），还没有「在场景里拾取磁带」的交互。
 - 摄像头**画面**仍由现有监控墙负责；GameRoot 只装配会话状态，不复制监控 UI。
 - 双画风目前只覆盖 World 里按 `real` / `imaginary` 打组的 NPC 网格（由 GameRoot 绑定 World 时补齐）；
   地面/门框等占位几何未打组，开关画风不会改变它们。
