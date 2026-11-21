@@ -98,7 +98,7 @@ World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮�
   地面/门框等占位几何未打组，开关画风不会改变它们。
 - `World` 节点缺失时只记录 `last_errors` / 发 `definition_error`，不中止启动（引导目标为空）。
 - W5 危险效果 / 盲区、W7 潜行、W8 亲身段落未接进本场景：它们的触发位置/输入需要先有
-  关卡数据（`resources/data/levels/*.json`）和设计拍板（M16 等），超出本 issue 的验收范围。
-- W8 的二段跳动作段**不保留**（设计决定 #20）：`PlayerController.action_enabled` 默认 `false`，
+  关卡数据（`resources/data/levels/*.json`）和玩法层输入接线，超出本 issue 的验收范围。
+- 终章动作段（M15，二段跳）**不保留**（设计决定 #20）：`PlayerController.action_enabled` 默认 `false`，
   `JumpSection` 仅作为可选项保留，不接任何关卡。
 - 场景内的占位几何用于验证装配，不是最终美术。

@@ -206,7 +206,7 @@ func get_state() -> Dictionary:
 	}
 
 
-## 回到出生点并清空跳跃预算（循环回溯用）。
+## 回到出生点并清空跳跃预算（循环重开用）。
 func reset() -> void:
 	_reset_pose()
 

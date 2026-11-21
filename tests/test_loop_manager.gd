@@ -1,5 +1,5 @@
 extends SceneTree
-## W6 循环 / 回溯框架测试（LoopManager + LoopState）。
+## W6 循环 / 回放框架测试（LoopManager + LoopState）。
 ## 运行：godot --headless --path . --script tests/test_loop_manager.gd
 ## 退出码 0 = 全绿，1 = 有用例失败。
 ##
@@ -8,7 +8,7 @@ extends SceneTree
 ## - rewind_to 调所有参与者的 reset_for_loop(time)，参与者状态回到该时刻，
 ##   world_reset 由 rewind_to 广播；
 ## - reset_for_loop 缺失/参与者非法时 push_warning 并继续，不整体失败；
-## - 知识保留：ClueManager 的 timeline clues 在回退/重开时不清空（只读消费）；
+## - 知识保留：ClueManager 的 timeline clues 在重开时不清空（只读消费）；
 ## - to_dict/from_dict（含 JSON 往返）恢复轮次与 history，非法数据不崩溃。
 ##
 ## 不依赖 autoload，也不依赖真实帧率。
@@ -205,7 +205,7 @@ func _test_end_round_history() -> void:
 	manager.free()
 
 
-# --- 回退 / 重开 ---------------------------------------------------------------
+# --- 回到录像带时刻 / 重开 -----------------------------------------------------
 
 func _test_rewind_contract() -> void:
 	var manager = _manager()
@@ -258,7 +258,7 @@ func _test_rewind_contract() -> void:
 	var before_freed: int = resets.size()
 	var ok_freed: bool = manager.rewind_to(0.0, [freed])
 	# 已知盲区：Godot 无法在进程内断言 stderr；本用例只证明已释放参与者不会中断
-	# rewind_to。若实现回退成 `is Object` 会打 SCRIPT ERROR 但仍能通过此断言。
+	# rewind_to。若实现改成 `is Object` 会打 SCRIPT ERROR 但仍能通过此断言。
 	_check("已释放的参与者不会让 rewind_to 崩溃",
 		ok_freed and resets.size() == before_freed + 1, str(ok_freed))
 
@@ -279,7 +279,7 @@ func _test_knowledge_kept() -> void:
 	var world := FakeParticipant.new()
 
 	var ok: bool = manager.rewind_to(0.0, [clues, world])
-	_check("回退时 ClueManager 的 timeline clues 不被清空（知识保留）",
+	_check("重开时 ClueManager 的 timeline clues 不被清空（知识保留）",
 		ok and clues.timeline_clue_count() == 1 and clues.has_timeline_clue(clue_id),
 		str(clues.get_timeline_clues()))
 	_check("时间线线索内容保持不变", clues.get_timeline_clues() == before,

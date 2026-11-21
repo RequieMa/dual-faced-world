@@ -417,9 +417,15 @@ func _test_jump_action_disabled_by_default() -> void:
 	controller.tick(0.1, {"jump": false})
 	controller.set_action_enabled(true)
 	controller.tick(0.1, {"jump": true})
-	_check("PlayerController：显式打开后仍可跳（组件保留为可选项）",
+	_check("PlayerController：运行时打开后仍可跳（组件保留为可选项）",
 		int(controller.get_state()["jumps_used"]) == 1)
 	_dispose(controller)
+
+	# 文档推荐的显式开启入口：构造时 setup({"action_enabled": true})
+	var enabled := _new_raw_controller({"action_enabled": true})
+	enabled.tick(0.1, {"jump": true})
+	_check("PlayerController：setup 显式开启后可以跳", int(enabled.get_state()["jumps_used"]) == 1)
+	_dispose(enabled)
 
 
 func _test_whole_section_toggle() -> void:
