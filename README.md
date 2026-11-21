@@ -19,7 +19,7 @@ Godot 4.x 个项目。大体积资源位于 external-assets/，通过百度网�
 godot --path . scenes/<name>.tscn
 ```
 
-- `scenes/main.tscn`：游戏入口，实例化 `scenes/game_root.tscn`（W1–W8 集成装配）
+- `scenes/main.tscn`：游戏入口，实例化 `scenes/game_root.tscn`（W12 集成装配）
 - `scenes/game_root.tscn`：W12 集成场景（摄像头 / 引导 / 对话 / 双画风 / 循环），
   玩法与接线见 [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)
 - `scenes/monitor_grid_demo.tscn`：监控墙 4 路放大 transition
