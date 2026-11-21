@@ -14,7 +14,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 
 - 禁止直接 push 到 `main` / `develop` / `release`。
 - 禁止 force push 到任何共享分支。
-- 禁止 merge 自己开的 PR。
+- **PR 由作者自己合并**：CI 全绿 + 独立评审无阻塞项即可 squash 合并，不再等人批准（规则集已把 required review 设为 0）。
 - 共享分支启用了 required linear history：PR 用 Squash / Rebase 合并，禁止 merge commit。
 
 ## 2. 接单流程（每一步都必须做）
@@ -44,12 +44,19 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
    - `git diff develop...HEAD`
    - 测试命令与红/绿两次输出
    - 工单目标与验收标准
-   要求它逐条列出阻塞问题；修完后让它复审一次。
+   要求它逐条列出阻塞问题；修完后让它复审一次。reviewer 的结论原文要贴进 PR 评论（可审计），不能只由作者转述。
 7. **提交**：Conventional Commits（`feat:` / `fix:` / `test:` / `docs:` / `refactor:` / `chore:`）。
 8. **推送**：`git push -u origin feature-<slug>`
 9. **开 PR**：`gh pr create --base develop --head feature-<slug>`。
    描述必须包含：工单链接、TDD 证据（红/绿命令与结果）、自检、reviewer 结论、风险。
-10. **停在 PR**：不要合并自己的 PR，等 reviewer / 人批准后由他人合并。
+10. **合并**：等 CI 全绿、reviewer 明确「可合并」后由作者自己合并：
+
+    ```sh
+    gh pr merge <n> --squash --delete-branch   # 只用于 feature-* / hotfix-*
+    ```
+
+    本节只覆盖 `feature-*` / `hotfix-*`；`develop→release`、`release→main` 一律由 release 负责人 rebase 合并且不删 `release`（见 §5）。
+    合并后关掉对应 issue（PR 未写 `closes #N` 时手动 `gh issue close`）。CI 红或有阻塞项时不得合并。
 
 ## 3. TDD 与测试
 
@@ -69,6 +76,7 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 
 - 只读，不改代码。
 - 输出四段：**阻塞项 / 建议项 / 测试是否可信 / 是否可合并**。
+- 「是否可合并」是合并门槛：有阻塞项时作者不得合并；修完需复审一次。
 - 重点检查：需求覆盖、边界条件、测试是否真的会失败、是否有隐藏行为变更、Godot 4.x 兼容性、是否夹带大文件。
 
 ## 5. Release 与 Hotfix
@@ -79,7 +87,8 @@ hotfix-*   ← 从 release 切出，修完 PR 回 release，再回合 develop
 - 全量测试通过；
 - 无 P0/P1 未解决；
 - 有发布说明 / 变更清单；
-- 由 release 负责人（人或被指派的 release agent）发起 PR。
+- 同样走独立评审（reviewer 无阻塞项）且 CI 全绿；
+- 由 release 负责人（人或被指派的 release agent）发起**并合并** PR：`gh pr merge <n> --rebase`，不删除 `release` 分支。
 
 `release` 出问题：
 
@@ -94,8 +103,8 @@ hotfix 合并进 `release` 后，必须把 `release` 回合 `develop`（PR 或 f
 
 `release` 验证通过：
 
-1. 发 `release → main` 的 PR；
-2. 合并后在 `main` 打 tag：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
+1. 由 release 负责人发 `release → main` 的 PR（同样独立评审 + CI 全绿）；
+2. 由 release 负责人 `gh pr merge <n> --rebase` 合并（不删 `release`），然后在 `main` 打 tag：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
 3. tag 只打在 `main` 上；hotfix 发布用 patch 版本。
 
 ## 6. 禁止事项
@@ -105,3 +114,4 @@ hotfix 合并进 `release` 后，必须把 `release` 回合 `develop`（PR 或 f
 - 提交 `external-assets/` 内容、`.godot/`、`autoload/`、密钥
 - 用 `--no-verify` 跳过 hooks
 - 把 stateDir、日志、截图提交进仓库
+- 在 CI 未绿或 reviewer 仍有阻塞项时合并 PR
