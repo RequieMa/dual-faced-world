@@ -62,7 +62,7 @@ godot --path . scenes/main.tscn
 - 验收：`tests/test_prologue_demo.gd`（40 条：轮次/计分/超时重试/烧毁扣分）、
   `tests/test_demo_loop_semantics.gd`（19 条：O 开门、门复位、重玩清烧毁、面板暂停、最终态 HUD）、
   `tests/test_demo_goal_chain.gd`（40 条：拾取→线索→开门→引导→敌人→闪光阻挡→新局重置）、
-  `tests/test_demo_playthrough.gd`（16 条：真实策略三轮通关，锁“朋友不动时不被抓”）、
+  `tests/test_demo_playthrough.gd`（17 条：真实策略三轮通关，锁“朋友不动时不被抓”）、
   `tests/test_game_root_autotick.gd`（12 条：真实 `_process` + auto_tick 时间轴）。
 
 这是验证「回放查线索 → 监控引导 → 过载代价 → 重开一轮」的纵向切片，剧情化目标/正式关卡还没接。

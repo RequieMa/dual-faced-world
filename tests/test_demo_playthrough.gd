@@ -4,7 +4,7 @@ extends SceneTree
 ## 运行：godot --headless --path . --script tests/test_demo_playthrough.gd
 
 const SCENE_PATH := "res://scenes/game_root.tscn"
-const EXPECTED_CHECKS := 16
+const EXPECTED_CHECKS := 17
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -54,6 +54,9 @@ func _run_tests() -> void:
 		str(game.get_camera_session().get_state()))
 	_check("过载产生闪光", game.get_hazard_effects().get_active_hazards().size() > 0,
 		str(game.get_hazard_effects().get_state()))
+	_check("闪光覆盖当前巡逻位置",
+		game.get_hazard_effects().is_blocking(game.get_guard().get_position()),
+		str(game.get_guard().get_state()))
 	_check("第 2 轮开门", game.handle_action("game_door"))
 	_check("第 2 轮 F", game.handle_action("game_hint_follow"))
 	game.tick(4.0)

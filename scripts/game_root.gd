@@ -951,8 +951,7 @@ func _demo_objective() -> String:
 	if not _demo_door_open():
 		return "按 H 开门（线索已到手）"
 	if _enemy_active:
-		var hazards = get_node_or_null("HazardEffects")
-		if hazards != null and hazards.get_active_hazards().is_empty():
+		if _hazard_effects != null and _hazard_effects.get_active_hazards().is_empty():
 			return "先过载机位制造闪光，再按 F 带朋友到门口"
 		return "闪光已生效：按 F 带朋友到门口"
 	return "按 F 带朋友到门口"
