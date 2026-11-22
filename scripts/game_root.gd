@@ -241,7 +241,7 @@ func _build_systems() -> void:
 	_hazard_effects.name = "HazardEffects"
 	add_child(_hazard_effects)
 	_hazard_effects.configure({
-		"flash": {"duration": 8.0, "radius": 7.0, "blocking": true},
+		"flash": {"duration": 8.0, "radius": 9.0, "blocking": true},
 	})
 
 	_camera_session.overload_started.connect(_on_camera_overload)
@@ -897,6 +897,11 @@ func _update_demo(delta: float) -> void:
 		return
 	_demo_time_left = maxf(0.0, _demo_time_left - delta)
 	_apply_burn_penalty()
+	# 先判“到门口且门已开”，避免刚抵达就被巡逻的同一 tick 判负。
+	if _demo_target_arrived() and _demo_door_open():
+		_complete_demo_round()
+		_refresh_demo_hud()
+		return
 	if _enemy_active and _enemy != null:
 		_enemy.tick(delta)
 		_update_guard_visual()
@@ -905,10 +910,7 @@ func _update_demo(delta: float) -> void:
 			_refresh_demo_hud()
 			return
 	if _demo_target_arrived():
-		if _demo_door_open():
-			_complete_demo_round()
-		else:
-			_demo_message = "朋友到门口了，但门还锁着：按 E 找线索 / H 开门"
+		_demo_message = "朋友到门口了，但门还锁着：按 E 找线索 / H 开门"
 	elif _demo_time_left <= 0.0:
 		_demo_fail("超时")
 	_refresh_demo_hud()
@@ -924,6 +926,11 @@ func _guard_is_blocked() -> bool:
 func _guard_sees_target() -> bool:
 	var npc = _npcs.get(DEMO_TARGET_NPC)
 	if _enemy == null or npc == null or not is_instance_valid(npc):
+		return false
+	# 巡逻只抓“正在移动的朋友”：站着不动时给玩家留出过载/观察窗口。
+	var npc_state: Dictionary = npc.get_state()
+	var state_name := String(npc_state.get("state", ""))
+	if state_name != "FOLLOW" and state_name != "OPEN_DOOR":
 		return false
 	return bool(_enemy.sees({"id": DEMO_TARGET_NPC, "position": npc.position}))
 
@@ -943,6 +950,10 @@ func _demo_objective() -> String:
 		return "按 E 拾取磁带，拿到门禁线索"
 	if not _demo_door_open():
 		return "按 H 开门（线索已到手）"
+	if _enemy_active:
+		if _hazard_effects != null and _hazard_effects.get_active_hazards().is_empty():
+			return "先过载机位制造闪光，再按 F 带朋友到门口"
+		return "闪光已生效：按 F 带朋友到门口"
 	return "按 F 带朋友到门口"
 
 

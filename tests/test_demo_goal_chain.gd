@@ -110,6 +110,7 @@ func _run_tests() -> void:
 	var guard = spotted.get_guard()
 	guard.setup([Vector3(4, 0, 0)], 0.0)
 	guard.set_facing(Vector3(0, 0, 1))
+	spotted.handle_action("game_hint_follow")
 	spotted.tick(0.1)
 	_check("被巡逻发现判负", String(spotted.get_demo_state()["phase"]) == "lost",
 		str(spotted.get_demo_state()))
@@ -149,6 +150,8 @@ func _run_tests() -> void:
 	guard3.set_facing(Vector3(1, 0, 0))
 	blocked.switch_camera("C1")
 	blocked.tick(8.0)
+	blocked.handle_action("game_hint_follow")
+	blocked.tick(0.1)
 	_check("闪光期间敌人被阻挡",
 		not (guard3.get_state()["blocked_by"] as Array).is_empty(), str(guard3.get_state()))
 	_check("阻挡期间不判负", String(blocked.get_demo_state()["phase"]) == "playing",
