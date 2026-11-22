@@ -33,6 +33,16 @@ const DIALOGUES_PATH := "res://resources/data/dialogues.json"
 const LEVEL_PATH := "res://resources/data/levels/theater.json"
 const LEVEL_SCHEMA_PATH := "res://resources/data/schema/level.schema.json"
 const WORLD_NODE := "World"
+const CAMERA_VIEWS_NODE := "World/Cameras"
+const OVERVIEW_CAMERA_NODE := "World/OverviewCamera"
+
+## 每个机位的画面朝向（位置在场景里，朝向由运行时 look_at 统一算，避免手算欧拉角）。
+const CAMERA_LOOK_TARGETS := {
+	"C1": Vector3(-2.5, 1.0, 0.0),
+	"C2": Vector3(2.5, 1.0, 0.0),
+	"C3": Vector3(0.0, 1.0, 0.0),
+	"C4": Vector3(0.0, 1.0, -4.0),
+}
 
 ## 关卡没加载出来时的兜底机位（与 surveillance.json 对齐）。
 const DEFAULT_CAMERAS: Array[String] = ["C1", "C2", "C3", "C4"]
@@ -79,6 +89,11 @@ var _guide_bus: Node
 var _loop_manager: Node
 var _dialogue_controller: Control
 var _style_controller: Node
+
+## 机位画面：id -> Scene 里的 Camera3D；空 id 表示总览。
+var _camera_views: Dictionary = {}
+var _overview_camera: Camera3D = null
+var _camera_view_id: String = ""
 
 ## 由 World 子树注册进来的目标，按能力分类，便于循环复位。
 var _npcs: Dictionary = {}
@@ -130,6 +145,7 @@ func _ready() -> void:
 	_build_systems()
 	_load_data()
 	_load_level()
+	_bind_camera_views()
 	_bind_world()
 	_collect_npc_ids()
 	_setup_tape_archive()
@@ -195,10 +211,35 @@ func _build_systems() -> void:
 	add_child(_style_controller)
 
 	_camera_session.overload_started.connect(_on_camera_overload)
+	_camera_session.burned.connect(_on_camera_burned)
+	_camera_session.cooldown_changed.connect(_on_camera_cooldown)
 	_guide_bus.hint_sent.connect(_on_hint_sent)
 	_loop_manager.round_started.connect(_on_loop_round_started)
 	_loop_manager.round_ended.connect(_on_loop_round_ended)
 	_dialogue_controller.error_occurred.connect(_on_dialogue_error)
+
+
+## 把场景里的 C1–C4 Camera3D 接成真正的画面；缺失时退化为总览，不中止启动。
+func _bind_camera_views() -> void:
+	_overview_camera = get_node_or_null(OVERVIEW_CAMERA_NODE) as Camera3D
+	_camera_views.clear()
+	var rig := get_node_or_null(CAMERA_VIEWS_NODE)
+	if rig == null:
+		push_warning("GameRoot: 场景缺少 %s，机位切换只更新状态" % CAMERA_VIEWS_NODE)
+	else:
+		for child in rig.get_children():
+			if not child is Camera3D:
+				continue
+			var camera := child as Camera3D
+			var camera_id := String(camera.name)
+			camera.current = false
+			_camera_views[camera_id] = camera
+			var target: Variant = CAMERA_LOOK_TARGETS.get(camera_id)
+			if target is Vector3:
+				camera.look_at(target, Vector3.UP)
+	if _overview_camera != null:
+		_overview_camera.current = true
+	_camera_view_id = ""
 
 
 func _load_data() -> void:
@@ -793,6 +834,32 @@ func _refresh_hud() -> void:
 	var npc := _current_npc_id()
 	hint_label.text = "关卡：%s ｜ 机位：%s ｜ 提示对象：%s（Tab 切换）\n1–4 机位 · 0 离开 · F 跟随 · G 等待 · O 开门 · I 灯 · H 门 · Space 对话 · T 录像带" % [
 		level_name, camera_text, npc if not npc.is_empty() else "—"]
+	var camera_status := get_node_or_null("UI/CameraStatus") as Label
+	if camera_status != null:
+		camera_status.text = _camera_status_text()
+
+
+## HUD 的机位状态：当前画面 + 每台机位的烧毁/冷却/使用中。所有数值来自 CameraSession。
+func _camera_status_text() -> String:
+	if not is_instance_valid(_camera_session):
+		return "画面：—"
+	var camera_state: Dictionary = _camera_session.get_state()
+	var current := String(camera_state.get("current", ""))
+	var burned: Array = camera_state.get("burned", [])
+	var cooldowns: Dictionary = camera_state.get("cooldowns", {})
+	var parts: Array[String] = []
+	for raw_id in _level_cameras:
+		var camera_id := String(raw_id)
+		if burned.has(camera_id):
+			parts.append("%s 烧毁" % camera_id)
+		elif cooldowns.has(camera_id):
+			parts.append("%s 冷却 %.1fs" % [camera_id, float(cooldowns[camera_id])])
+		elif current == camera_id:
+			parts.append("%s 使用中 %.1fs" % [camera_id, float(camera_state.get("remain", 0.0))])
+		else:
+			parts.append(camera_id)
+	var view_text := "总览" if _camera_view_id.is_empty() else _camera_view_id
+	return "画面：%s ｜ %s" % [view_text, " · ".join(parts)]
 
 
 func get_level_state() -> Dictionary:
@@ -819,6 +886,10 @@ func tick(delta: float) -> void:
 		if is_instance_valid(npc) and npc.has_method("tick"):
 			npc.tick(delta)
 	_update_demo(delta)
+	# 当前机位的停留倒计时需要连续刷新，否则 HUD 只在切换/烧毁时更新。
+	if is_instance_valid(_camera_session) \
+			and not String(_camera_session.get_state().get("current", "")).is_empty():
+		_refresh_hud()
 
 
 # --- 摄像头（W1） ---------------------------------------------------------------
@@ -826,7 +897,11 @@ func tick(delta: float) -> void:
 func switch_camera(camera_id: String) -> bool:
 	if not is_instance_valid(_camera_session):
 		return false
-	return bool(_camera_session.enter(camera_id))
+	var ok := bool(_camera_session.enter(camera_id))
+	if ok:
+		_set_camera_view(camera_id)
+	_refresh_hud()
+	return ok
 
 
 func leave_camera() -> void:
@@ -835,6 +910,43 @@ func leave_camera() -> void:
 	var current := String(_camera_session.get_state().get("current", ""))
 	if not current.is_empty():
 		_camera_session.leave(current)
+		_set_camera_view("")
+		_refresh_hud()
+
+
+## 画面切换：找不到对应 Camera3D 时回总览，不让逻辑状态和画面脱节。
+func _set_camera_view(camera_id: String) -> void:
+	var target: Camera3D = null
+	if not camera_id.is_empty() and _camera_views.has(camera_id):
+		target = _camera_views[camera_id] as Camera3D
+		_camera_view_id = camera_id
+	else:
+		_camera_view_id = ""
+		target = _overview_camera
+	if target != null:
+		target.current = true
+
+
+func _on_camera_burned(camera_id: String) -> void:
+	if _camera_view_id == camera_id:
+		_set_camera_view("")
+	_refresh_hud()
+
+
+func _on_camera_cooldown(_camera_id: String, _remain: float) -> void:
+	_refresh_hud()
+
+
+func get_camera_view_state() -> Dictionary:
+	var view_ids: Array[String] = []
+	for camera_id in _camera_views:
+		view_ids.append(String(camera_id))
+	view_ids.sort()
+	return {
+		"view": _camera_view_id,
+		"overview": _camera_view_id.is_empty(),
+		"views": view_ids,
+	}
 
 
 # --- 引导（W2） -----------------------------------------------------------------
@@ -895,6 +1007,7 @@ func reset_for_loop(_time: float) -> void:
 		camera_data["remain"] = 0.0
 		camera_data["cooldowns"] = {}
 		_camera_session.from_dict(camera_data)
+		_set_camera_view("")
 	for target_id in _npcs:
 		var npc = _npcs[target_id]
 		if is_instance_valid(npc) and _initial_npc_states.has(target_id):
@@ -903,6 +1016,7 @@ func reset_for_loop(_time: float) -> void:
 		var light = _lights[target_id]
 		if is_instance_valid(light) and _initial_light_states.has(target_id):
 			light.set_on(bool(_initial_light_states[target_id]))
+	_refresh_hud()
 
 
 # --- 状态 / 访问器 ---------------------------------------------------------------
@@ -934,6 +1048,7 @@ func is_round_active() -> bool:
 func get_state() -> Dictionary:
 	return {
 		"camera": _camera_session.get_state() if is_instance_valid(_camera_session) else {},
+		"camera_view": get_camera_view_state(),
 		"guide": _guide_bus.get_state() if is_instance_valid(_guide_bus) else {},
 		"loop": {
 			"round": _loop_manager.get_round_index() if is_instance_valid(_loop_manager) else 0,
