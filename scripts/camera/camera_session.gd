@@ -120,6 +120,16 @@ func tick(delta: float) -> void:
 			cooldown_changed.emit(camera_id, remain)
 
 
+## 清空运行时状态（配置保留）。用于“新开一局 demo”重玩；
+## 循环重开（restart_round）不要调用，M16 要求同一次运行内烧毁不恢复。
+func reset() -> void:
+	_current = ""
+	_remain = 0.0
+	_cooldowns.clear()
+	_burned.clear()
+	_overload_count = 0
+
+
 ## 运行时状态快照（W0 §1 契约字段 + Issue #11 要求的 overload_count）。
 func get_state() -> Dictionary:
 	return {

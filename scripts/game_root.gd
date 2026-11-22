@@ -101,6 +101,7 @@ var _lights: Dictionary = {}
 var _doors: Dictionary = {}
 var _initial_npc_states: Dictionary = {}
 var _initial_light_states: Dictionary = {}
+var _initial_door_states: Dictionary = {}
 
 var _round_active: bool = false
 
@@ -256,6 +257,7 @@ func _bind_world() -> void:
 		_fail("GameRoot: 场景缺少 %s 节点，引导目标未注册" % WORLD_NODE)
 		return
 	_scan_world(world)
+	_wire_npc_doors()
 
 
 ## 按鸭子类型扫描：get_target_id() 的节点注册到 GuideBus；
@@ -280,6 +282,18 @@ func _scan_world(node: Node) -> void:
 		_scan_world(child)
 
 
+## O 提示的 OPEN_DOOR 状态需要 NPC 知道要开哪扇门；门在 NPC 之后才扫描到，
+## 所以统一在 World 扫描完成后接线。没有门时保持现状（NPC 只走完路线）。
+func _wire_npc_doors() -> void:
+	var door = _doors.get("door_a")
+	if door == null or not is_instance_valid(door):
+		return
+	for target_id in _npcs:
+		var npc = _npcs[target_id]
+		if is_instance_valid(npc) and npc.has_method("set_door_target"):
+			npc.set_door_target(door)
+
+
 ## 把 NPC 的网格挂到 StyleController 消费的组（real / imaginary）。
 ## 网格是 GuideableNpc 在 _ready 里代码生成的，场景文件无法直接打组；
 ## 这里在 World 绑定阶段补齐，否则 W4 的 apply_style 只会翻开关、套不到任何节点。
@@ -299,13 +313,16 @@ func _add_group_recursive(node: Node, group: String) -> void:
 
 
 func _capture_world_initial_state() -> void:
-	# 只记逻辑状态（NPC 的 to_dict / 灯的开关）；门没有 close()，见文件头。
+	# 记逻辑状态：NPC 的 to_dict / 灯的开关 / 门的开合；门用 from_dict 复位。
 	for target_id in _npcs:
 		if is_instance_valid(_npcs[target_id]):
 			_initial_npc_states[target_id] = _npcs[target_id].to_dict()
 	for target_id in _lights:
 		if is_instance_valid(_lights[target_id]):
 			_initial_light_states[target_id] = bool(_lights[target_id].is_on())
+	for target_id in _doors:
+		if is_instance_valid(_doors[target_id]):
+			_initial_door_states[target_id] = bool(_doors[target_id].is_open())
 
 
 # --- 关卡数据 -------------------------------------------------------------------
@@ -675,6 +692,13 @@ func get_tape_state() -> Dictionary:
 func start_demo() -> void:
 	if not _npcs.has(DEMO_TARGET_NPC):
 		_fail("demo 目标 NPC %s 不存在" % DEMO_TARGET_NPC)
+	if _tape_open:
+		_close_tape()
+	# R 通关重玩 = 新开一局：分数、轮次、烧毁机位、当前画面一起清空。
+	# 同一局内的 restart_round 仍保留烧毁（M16），两者语义不同。
+	if is_instance_valid(_camera_session):
+		_camera_session.reset()
+		_set_camera_view("")
 	_demo_round = 1
 	_demo_score = 0
 	_demo_phase = "playing"
@@ -814,8 +838,12 @@ func _ensure_demo_hud() -> void:
 func _refresh_demo_hud() -> void:
 	if _demo_label == null:
 		return
-	_demo_label.text = "第 %d/%d 轮 ｜ 剩余 %ds ｜ 得分 %d\n%s" % [
-		_demo_round, DEMO_ROUNDS, int(ceil(_demo_time_left)), _demo_score, _demo_message]
+	if _demo_phase == "playing":
+		_demo_label.text = "第 %d/%d 轮 ｜ 剩余 %ds ｜ 得分 %d\n%s" % [
+			_demo_round, DEMO_ROUNDS, int(ceil(_demo_time_left)), _demo_score, _demo_message]
+	else:
+		_demo_label.text = "第 %d/%d 轮 ｜ 得分 %d\n%s" % [
+			_demo_round, DEMO_ROUNDS, _demo_score, _demo_message]
 
 
 # --- HUD -----------------------------------------------------------------------
@@ -878,6 +906,9 @@ func get_level_state() -> Dictionary:
 ## 宿主每帧调用：推进摄像头停留 / 冷却与场景里可 tick 的引导目标。
 func tick(delta: float) -> void:
 	if delta <= 0.0 or not is_finite(delta):
+		return
+	# 录像带检查面板是暂停界面：打开时世界时间、机位停留、敌人巡逻全部冻结。
+	if _tape_open:
 		return
 	if is_instance_valid(_camera_session):
 		_camera_session.tick(delta)
@@ -1016,6 +1047,10 @@ func reset_for_loop(_time: float) -> void:
 		var light = _lights[target_id]
 		if is_instance_valid(light) and _initial_light_states.has(target_id):
 			light.set_on(bool(_initial_light_states[target_id]))
+	for target_id in _doors:
+		var door = _doors[target_id]
+		if is_instance_valid(door) and _initial_door_states.has(target_id):
+			door.from_dict({"open": bool(_initial_door_states[target_id])})
 	_refresh_hud()
 
 
