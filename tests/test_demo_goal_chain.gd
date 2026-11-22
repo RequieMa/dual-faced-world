@@ -3,7 +3,7 @@ extends SceneTree
 ## 运行：godot --headless --path . --script tests/test_demo_goal_chain.gd
 
 const SCENE_PATH := "res://scenes/game_root.tscn"
-const EXPECTED_CHECKS := 36
+const EXPECTED_CHECKS := 40
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -72,6 +72,13 @@ func _run_tests() -> void:
 	game.tick(4.0)
 	_check("三轮后通关", String(game.get_demo_state()["phase"]) == "won",
 		str(game.get_demo_state()))
+	# R 通关重玩 = 新开一局：线索/磁带知识也清空，目标回到拾取。
+	game.start_demo()
+	var fresh: Dictionary = game.get_demo_state()
+	_check("新局清空门禁线索", not bool(fresh["clue_found"]), str(fresh))
+	_check("新局回到拾取目标",
+		not bool(fresh["tape_collected"]) and String(fresh["objective"]).contains("E"),
+		str(fresh))
 	game.free()
 
 	# 2) 门没开时，NPC 到终点也不能判胜。
@@ -127,6 +134,26 @@ func _run_tests() -> void:
 	hazard_game.tick(9.0)
 	_check("危险到期清空", hazards.get_active_hazards().is_empty(), str(hazards.get_state()))
 	hazard_game.free()
+
+	# 5) 闪光真的挡住巡逻：敌人本该看见朋友，但 blocked_by 非空时不判负。
+	_reset_globals()
+	var blocked := _new_game()
+	blocked.start_demo()
+	blocked.handle_action("game_pickup")
+	blocked.handle_action("game_door")
+	_disable_guard(blocked)
+	blocked.handle_action("game_hint_follow")
+	blocked.tick(4.0)
+	var guard3 = blocked.get_guard()
+	guard3.setup([Vector3(2, 0, 0)], 0.0)
+	guard3.set_facing(Vector3(1, 0, 0))
+	blocked.switch_camera("C1")
+	blocked.tick(8.0)
+	_check("闪光期间敌人被阻挡",
+		not (guard3.get_state()["blocked_by"] as Array).is_empty(), str(guard3.get_state()))
+	_check("阻挡期间不判负", String(blocked.get_demo_state()["phase"]) == "playing",
+		str(blocked.get_demo_state()))
+	blocked.free()
 
 	_report()
 

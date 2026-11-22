@@ -241,7 +241,7 @@ func _build_systems() -> void:
 	_hazard_effects.name = "HazardEffects"
 	add_child(_hazard_effects)
 	_hazard_effects.configure({
-		"flash": {"duration": 8.0, "radius": 12.0, "blocking": true},
+		"flash": {"duration": 8.0, "radius": 7.0, "blocking": true},
 	})
 
 	_camera_session.overload_started.connect(_on_camera_overload)
@@ -548,7 +548,7 @@ func _action_send_hint(action: String) -> bool:
 	var target := _current_npc_id()
 	if target.is_empty():
 		return false
-	if action == "game_hint_open" and not _has_door_clue():
+	if action == "game_hint_open" and _demo_phase == "playing" and not _has_door_clue():
 		_demo_message = "门锁着：先按 E 拾取磁带里的门禁线索"
 		_refresh_demo_hud()
 		return false
@@ -570,7 +570,7 @@ func _action_toggle_indicator() -> bool:
 func _action_open_door() -> bool:
 	if _doors.is_empty():
 		return false
-	if not _has_door_clue():
+	if _demo_phase == "playing" and not _has_door_clue():
 		_demo_message = "门锁着：先按 E 拾取磁带里的门禁线索"
 		_refresh_demo_hud()
 		return false
@@ -830,6 +830,13 @@ func start_demo() -> void:
 		_set_camera_view("")
 	if is_instance_valid(_hazard_effects):
 		_hazard_effects.reset()
+	# 新开一局 = 清空上一局的线索/磁带知识，保证每轮目标都从“拾取”开始。
+	var clues := get_node_or_null("/root/ClueManager")
+	if clues != null and clues.has_method("clear"):
+		clues.clear()
+	var archive := get_node_or_null("/root/TapeArchive")
+	if archive != null and archive.has_method("reset_discovery"):
+		archive.reset_discovery()
 	_demo_round = 1
 	_demo_score = 0
 	_demo_phase = "playing"
