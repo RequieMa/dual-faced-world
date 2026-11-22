@@ -1244,6 +1244,7 @@ func reset_for_loop(_time: float) -> void:
 	if is_instance_valid(_hazard_effects):
 		_hazard_effects.reset()
 	if _enemy != null:
+		_enemy_active = false
 		_enemy.setup(DEMO_GUARD_ROUTE, 0.0)
 		_update_guard_visual()
 	_refresh_hud()
