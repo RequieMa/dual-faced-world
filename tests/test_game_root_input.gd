@@ -132,6 +132,10 @@ func _test_scene_input() -> void:
 	_check("动作 hint_wait 成功", _game_root.handle_action("game_hint_wait"))
 	_check("hint_wait 文案为「等待」",
 		String(_game_root.get_state()["guide"]["npcs"].get(target_id, {}).get("last_hint", "")) == "等待")
+	# 门锁需要先有门禁线索；本用例验证输入分发，直接登记线索。
+	var clues := root.get_node_or_null("ClueManager")
+	if clues != null:
+		clues.register_flag("door_code_A")
 	_check("动作 hint_open 成功", _game_root.handle_action("game_hint_open"))
 	_check("hint_open 文案为「开门」",
 		String(_game_root.get_state()["guide"]["npcs"].get(target_id, {}).get("last_hint", "")) == "开门")

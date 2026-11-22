@@ -126,7 +126,7 @@ offset_top = 56.0
 offset_right = 760.0
 offset_bottom = 84.0
 theme_override_colors/font_color = Color(0.72, 0.78, 0.88, 1)
-text = "按 1–4 切机位 · F/G/O 提示 · I 灯 · H 门 · Space 对话 · T 检查录像带"
+text = "1–4 切机位 · E 拾取 · F/G/O 提示 · I 灯 · H 门 · Space 对话 · T 检查录像带"
 
 [node name="CameraStatus" type="Label" parent="UI"]
 offset_left = 24.0

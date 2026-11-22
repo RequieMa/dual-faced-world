@@ -29,6 +29,7 @@ godot --path . scenes/main.tscn
 |---|---|
 | `1`–`4` | 切换关卡机位（`theater.json` 的 cameras 顺序：C1–C4），画面与 `CameraSession` 同步切换 |
 | `0` | 离开当前机位（进入冷却），画面回到总览 |
+| `E` | 拾取本轮磁带；磁带里登记门禁线索 |
 | `F` / `G` / `O` | 对当前提示对象发「跟我来 / 等待 / 开门」 |
 | `Tab` | 切换提示对象（npc_imaginary ↔ npc_real） |
 | `I` | 开/关指示灯 `light_a` |
@@ -44,20 +45,27 @@ godot --path . scenes/main.tscn
 
 `scenes/main.tscn` 启动即进入 demo（`auto_tick == true` 时 `_ready` 自动 `start_demo()`）：
 
-- **目标**：每轮 60 秒内按 `F` 让 npc_imaginary 跟随并走到门口（route 终点）；到达即本轮成功；
-- **3 轮**；每轮得分 = `100 + ceil(剩余秒数)`；烧毁摄像头每台 `−30`（烧毁永久，M16）；
-- **失败**：超时 → 本轮失败，按 `R` 重试同一轮；**通关**：3 轮完成，按 `R` 重玩；
-- **门**：按 `O` 让 NPC 走到终点会开门；每轮重开时门复位关闭；`H` 仍可直接开门；
+- **目标**：每轮 60 秒内走完「按 `E` 拾取磁带拿门禁线索 → 按 `H` 开门 → 按 `F` 带 npc_imaginary 到门口」；
+  NPC 到达 route 终点 **且门已打开** 才算本轮成功（门没开只提示，不判胜）；
+- **3 轮**；每轮得分 = `100 + ceil(剩余秒数)`；拾取磁带 `+20`；烧毁摄像头每台 `−30`（同一次运行内永久，M16）；
+- **失败**：超时，或被巡逻敌人看见朋友 → 本轮失败，按 `R` 重试同一轮；**通关**：3 轮完成，按 `R` 重玩；
+- **门**：`H` 直接开门；`O` 让 NPC 走到终点也会开门；两者都要求先拿到 `door_code_A` 线索；
+  每轮重开时门复位关闭，线索跨轮保留；
+- **敌人/危险**：第 2/3 轮开启巡逻（第 3 轮更快）；朋友进入巡逻视锥即失败。
+  任意机位停留到过载会触发 8 秒闪光危险，挡住范围内的巡逻；烧毁代价是 `−30` 分；
 - **重开语义**：失败后 `R` 重试保留烧毁机位（M16 同一次运行内不恢复）；通关后 `R` 重玩视为新开一局，
   分数、烧毁机位、当前画面一起重置；
-- 开局解锁一盘磁带；之后每成功完成一轮再解锁一盘（重试不会重复解锁；demo 的简化线索获取，正式版应改为场景拾取）；
-- 验收：`tests/test_prologue_demo.gd`（40 条断言：通关、超时重试、烧毁扣分与补扣、HUD、磁带解锁，带断言数守卫）
-  与 `tests/test_demo_loop_semantics.gd`（19 条：O 开门、门复位、重玩清烧毁、面板暂停、最终态 HUD）。
+- 每轮有一盘磁带（T-01/T-02/T-03），按 `E` 拾取后登记门禁线索并解锁到录像带面板；
+  这是 demo 的简化线索获取，正式版应改成靠近物品拾取；
+- 验收：`tests/test_prologue_demo.gd`（40 条：轮次/计分/超时重试/烧毁扣分）、
+  `tests/test_demo_loop_semantics.gd`（19 条：O 开门、门复位、重玩清烧毁、面板暂停、最终态 HUD）、
+  `tests/test_demo_goal_chain.gd`（36 条：拾取→线索→开门→引导→敌人→通关）、
+  `tests/test_game_root_autotick.gd`（12 条：真实 `_process` + auto_tick 时间轴）。
 
-这是验证「目标 / 计时 / 失败 / 重开」骨架的可玩 demo；敌人、危险、剧情化目标还没接。
+这是验证「回放查线索 → 监控引导 → 过载代价 → 重开一轮」的纵向切片，剧情化目标/正式关卡还没接。
 `auto_tick == false`（headless 测试）时不会自动开局，测试用 `start_demo()` 显式驱动。
 
-录像带面板只显示已发现的带（默认库 `known_to_player=false`）：demo 每轮自动解锁一盘；
+录像带面板只显示已发现的带（默认库 `known_to_player=false`）：demo 每轮按 `E` 拾取一盘；
 手动验证时也可用 `TapeArchive.discover(tape_id)` 先发现 2–3 盘，再按 `T` / `←→` / `↑↓` 验证。
 面板打开时世界暂停（demo 计时、机位停留/冷却、NPC 移动都冻结），关闭后继续。
 面板打开时只响应录像带相关按键（`T` / `←→` / `↑↓` / `Esc`），避免后台误切机位。
@@ -84,23 +92,26 @@ Main (scenes/main.tscn)
 
 | API | 说明 |
 |---|---|
-| `switch_camera(id) -> bool` / `leave_camera()` | 转发 `CameraSession.enter/leave` |
-| `tick(delta)` | 推进摄像头计时与场景里可 `tick` 的 NPC；真实游玩时由 `_process` 调用 |
+| `switch_camera(id) -> bool` / `leave_camera()` | 转发 `CameraSession.enter/leave`，并同步真实 `Camera3D` 画面 |
+| `get_camera_view_state()` | 当前画面 id / 是否总览 / 场景里可用的机位列表 |
+| `tick(delta)` | 推进危险、摄像头计时、NPC、巡逻敌人与 demo；真实游玩时由 `_process` 调用 |
 | `send_hint(id, text)` / `set_indicator(id, on)` / `open_door(id)` | 转发 `GuideBus` |
 | `start_dialogue(id, group_override = "")` | 转发 `DialogueController.start` |
 | `apply_style(group, enabled)` | 转发 `StyleController.apply_style` |
 | `start_round()` / `end_round(summary) -> bool` / `restart_round(time = 0.0)` | 转发 `LoopManager`，并维护「当前是否有一轮进行中」 |
-| `start_demo()` / `is_demo_active()` / `get_demo_state()` | 可玩 demo：开局、查询阶段、查询轮次/倒计时/得分/文案 |
-| `reset_for_loop(time)` | `LoopManager` 参与者协议：复位摄像头焦点/冷却、NPC、指示灯 |
-| `get_state()` | 聚合 camera / guide / loop / dialogue / style / round_active |
+| `start_demo()` / `is_demo_active()` / `get_demo_state()` | 可玩 demo：开局、查询阶段/轮次/倒计时/得分/目标/门/敌人 |
+| `get_guard()` / `get_tape_pickup()` / `get_hazard_effects()` | demo 内容节点，供 HUD/测试查询 |
+| `reset_for_loop(time)` | `LoopManager` 参与者协议：复位摄像头焦点/冷却、NPC、指示灯、门、危险、敌人 |
+| `get_state()` | 聚合 camera / camera_view / guide / loop / dialogue / style / round_active |
 
 信号：`camera_overloaded`、`hint_sent`、`round_started`、`round_ended`、`definition_error`。
 装配/数据错误同时写 `last_errors` 并发 `definition_error`，不抛错。
 
 ### 计时与可复现性
 
-所有计时都由 `tick(delta)` 推进。`auto_tick` 默认开启（`_process` 里 tick，单帧 delta 限步到 0.1s，
-避免切窗/卡顿一帧烧毁机位）；headless 测试把它关掉、用固定步长调用 `tick()`，不依赖真实帧率。
+所有计时都由 `tick(delta)` 推进；录像带面板打开时 `tick` 直接返回（暂停）。`auto_tick` 默认开启
+（`_process` 里 tick，单帧 delta 限步到 0.1s，避免切窗/卡顿一帧烧毁机位）；headless 测试把它关掉、
+用固定步长调用 `tick()`，不依赖真实帧率；`tests/test_game_root_autotick.gd` 单独覆盖真实 `_process` 路径。
 `auto_tick` 只在 `_ready()` 读取，测试/宿主需要在 `add_child()` 之前设置。
 
 ### 轮次与重开语义（回放）
@@ -142,18 +153,17 @@ World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮�
 
 ## 5. 已知限制
 
-- 玩法闭环还差「目标与胜负」：输入已接（切机位 / 提示 / 灯 / 门 / 对话 / 录像带检查），
-  但还没有「查录像 → 引导朋友 → 过载拖住敌人 → 重开」的完整关卡流程与失败条件。
+- 当前是纵向切片，不是正式剧情关卡：磁带拾取用全局 `E`（不要求角色靠近），
+  三盘带都登记同一条门禁线索；正式版应按关卡/物品做空间拾取与多条线索。
 - 录像带面板只读展示 `TapeArchive` 的事件与 `ClueManager` 的线索，不改变线索状态；
-  磁带库目前全部是默认库（`resources/tapes/*.tres`），还没有「在场景里拾取磁带」的交互。
+  磁带库目前全部是默认库（`resources/tapes/*.tres`），没有真实视频流。
 - 摄像头**画面**由 `GameRoot` 自带的 `World/Cameras/C1–C4` 四台 `Camera3D` 提供，
   切机位会真实换画面；监控墙 demo 仍是独立场景，两者暂未合并。
 - 机位 HUD（`UI/CameraStatus`）显示当前画面与每台机位的使用中/冷却/烧毁状态。
 - 双画风目前只覆盖 World 里按 `real` / `imaginary` 打组的 NPC 网格（由 GameRoot 绑定 World 时补齐）；
   地面/门框等占位几何未打组，开关画风不会改变它们。
 - `World` 节点缺失时只记录 `last_errors` / 发 `definition_error`，不中止启动（引导目标为空）。
-- W5 危险效果 / 盲区、W7 潜行、W8 亲身段落未接进本场景：它们的触发位置/输入需要先有
-  关卡数据（`resources/data/levels/*.json`）和玩法层输入接线，超出本 issue 的验收范围。
+- W5 的敌人巡逻 + 闪光危险已接进 demo；盲区失明、W7 潜行、W8 亲身段落仍未接进主场景。
 - 终章动作段（M15，二段跳）**不保留**（设计决定 #20）：`PlayerController.action_enabled` 默认 `false`，
   `JumpSection` 仅作为可选项保留，不接任何关卡。
 - 场景内的占位几何用于验证装配，不是最终美术。

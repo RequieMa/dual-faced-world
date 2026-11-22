@@ -108,6 +108,12 @@ func blocking_hazards_at(position: Vector3) -> Array[String]:
 	return ids
 
 
+## 清空进行中的危险（循环复位/新一局 demo 用）；不补发 hazard_ended，
+## 宿主在复位后统一刷新 HUD/敌人状态。
+func reset() -> void:
+	_active.clear()
+
+
 ## 进行中的危险快照（含剩余时间），供宿主做特效/调试。
 func get_active_hazards() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
