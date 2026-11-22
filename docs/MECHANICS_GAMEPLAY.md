@@ -27,8 +27,8 @@ godot --path . scenes/main.tscn
 
 | 键 | 作用 |
 |---|---|
-| `1`–`4` | 切换关卡机位（`theater.json` 的 cameras 顺序：C1–C4） |
-| `0` | 离开当前机位（进入冷却） |
+| `1`–`4` | 切换关卡机位（`theater.json` 的 cameras 顺序：C1–C4），画面与 `CameraSession` 同步切换 |
+| `0` | 离开当前机位（进入冷却），画面回到总览 |
 | `F` / `G` / `O` | 对当前提示对象发「跟我来 / 等待 / 开门」 |
 | `Tab` | 切换提示对象（npc_imaginary ↔ npc_real） |
 | `I` | 开/关指示灯 `light_a` |
@@ -140,7 +140,9 @@ World 目标已注册、摄像头切换与过载烧毁、hint/灯/门、一轮�
   但还没有「查录像 → 引导朋友 → 过载拖住敌人 → 重开」的完整关卡流程与失败条件。
 - 录像带面板只读展示 `TapeArchive` 的事件与 `ClueManager` 的线索，不改变线索状态；
   磁带库目前全部是默认库（`resources/tapes/*.tres`），还没有「在场景里拾取磁带」的交互。
-- 摄像头**画面**仍由现有监控墙负责；GameRoot 只装配会话状态，不复制监控 UI。
+- 摄像头**画面**由 `GameRoot` 自带的 `World/Cameras/C1–C4` 四台 `Camera3D` 提供，
+  切机位会真实换画面；监控墙 demo 仍是独立场景，两者暂未合并。
+- 机位 HUD（`UI/CameraStatus`）显示当前画面与每台机位的使用中/冷却/烧毁状态。
 - 双画风目前只覆盖 World 里按 `real` / `imaginary` 打组的 NPC 网格（由 GameRoot 绑定 World 时补齐）；
   地面/门框等占位几何未打组，开关画风不会改变它们。
 - `World` 节点缺失时只记录 `last_errors` / 发 `definition_error`，不中止启动（引导目标为空）。
