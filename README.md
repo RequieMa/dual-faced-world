@@ -20,7 +20,7 @@ godot --path . scenes/<name>.tscn
 ```
 
 - `scenes/main.tscn`：游戏入口，实例化 `scenes/game_root.tscn`；启动即进入 **3 轮可玩 demo**
-  （60 秒内把朋友引导到门口，`F` 跟随、`R` 失败重试 / 通关重玩，完整键位见
+  （60 秒内把朋友引导到门口，`F` 跟随、`1–4` 切换真实机位画面、`R` 失败重试 / 通关重玩，完整键位见
   [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)）
 - `scenes/game_root.tscn`：W12 集成场景（摄像头 / 引导 / 对话 / 双画风 / 循环），
   玩法与接线见 [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)；设计决定见

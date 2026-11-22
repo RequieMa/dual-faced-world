@@ -44,11 +44,29 @@ light_energy = 1.1
 rotation_degrees = Vector3(-18, 140, 0)
 light_energy = 0.55
 
-[node name="Camera3D" type="Camera3D" parent="World"]
+[node name="OverviewCamera" type="Camera3D" parent="World"]
 position = Vector3(0, 7.5, 11)
 rotation_degrees = Vector3(-30, 0, 0)
 fov = 52.0
 current = true
+
+[node name="Cameras" type="Node3D" parent="World"]
+
+[node name="C1" type="Camera3D" parent="World/Cameras"]
+position = Vector3(-9, 3.4, 8.5)
+fov = 58.0
+
+[node name="C2" type="Camera3D" parent="World/Cameras"]
+position = Vector3(9, 3.4, 8.5)
+fov = 58.0
+
+[node name="C3" type="Camera3D" parent="World/Cameras"]
+position = Vector3(0, 4.2, -9.5)
+fov = 58.0
+
+[node name="C4" type="Camera3D" parent="World/Cameras"]
+position = Vector3(0, 3.0, 9.5)
+fov = 58.0
 
 [node name="Ground" type="MeshInstance3D" parent="World"]
 mesh = SubResource("GroundMesh")
@@ -109,3 +127,12 @@ offset_right = 760.0
 offset_bottom = 84.0
 theme_override_colors/font_color = Color(0.72, 0.78, 0.88, 1)
 text = "按 1–4 切机位 · F/G/O 提示 · I 灯 · H 门 · Space 对话 · T 检查录像带"
+
+[node name="CameraStatus" type="Label" parent="UI"]
+offset_left = 24.0
+offset_top = 88.0
+offset_right = 900.0
+offset_bottom = 112.0
+theme_override_colors/font_color = Color(0.58, 0.72, 0.82, 1)
+theme_override_font_sizes/font_size = 15
+text = "画面：总览"
