@@ -34,6 +34,10 @@ func _run_tests() -> void:
 	_check("默认提示目标是 npc_imaginary",
 		String(_game_root.get_level_state().get("hint_target", "")) == "npc_imaginary",
 		str(_game_root.get_level_state()))
+	# O 开门也受门禁线索约束；本用例只验证 O→门的接线，直接登记线索。
+	var clues := root.get_node_or_null("ClueManager")
+	if clues != null:
+		clues.register_flag("door_code_A")
 	_check("O 提示被接受", _game_root.handle_action("game_hint_open"))
 	_game_root.tick(4.0)
 	var door = _game_root.find_child("Door", true, false)
