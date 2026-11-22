@@ -27,6 +27,9 @@ const LoopManagerScript := preload("res://scripts/loop/loop_manager.gd")
 const DialogueControllerScript := preload("res://scripts/dialogue/dialogue_controller.gd")
 const StyleControllerScript := preload("res://scripts/render/style_controller.gd")
 const ConfigLoaderScript := preload("res://scripts/config/config_loader.gd")
+const EnemyPatrolScript := preload("res://scripts/enemy/enemy_patrol.gd")
+const HazardEffectsScript := preload("res://scripts/hazards/hazard_effects.gd")
+const TapePickupScript := preload("res://scripts/demo/tape_pickup.gd")
 
 const SURVEILLANCE_PATH := "res://resources/data/surveillance.json"
 const DIALOGUES_PATH := "res://resources/data/dialogues.json"
@@ -69,6 +72,7 @@ const INPUT_ACTIONS := {
 	"game_tape_back": KEY_DOWN,
 	"game_close": KEY_ESCAPE,
 	"game_restart": KEY_R,
+	"game_pickup": KEY_E,
 }
 
 const HINT_TEXTS := {
@@ -89,6 +93,12 @@ var _guide_bus: Node
 var _loop_manager: Node
 var _dialogue_controller: Control
 var _style_controller: Node
+var _hazard_effects: Node
+var _enemy: Node
+var _enemy_visual: MeshInstance3D = null
+var _tape_pickup: Node3D = null
+var _enemy_active := false
+var _demo_tape_collected := false
 
 ## 机位画面：id -> Scene 里的 Camera3D；空 id 表示总览。
 var _camera_views: Dictionary = {}
@@ -131,6 +141,21 @@ const DEMO_ROUND_TIME := 60.0
 const DEMO_ROUND_SCORE := 100
 const DEMO_BURN_PENALTY := 30
 const DEMO_TARGET_NPC := "npc_imaginary"
+const DEMO_TAPES: Array[String] = ["T-01", "T-02", "T-03"]
+const DEMO_TAPE_BONUS := 20
+const DEMO_CLUE := "door_code_A"
+## 敌人从左侧走到右侧；玩家可以等它背对，或过载机位制造闪光挡住它。
+const DEMO_GUARD_ROUTE := [Vector3(-4, 0, 0), Vector3(4, 0, 0)]
+const DEMO_GUARD_SPEEDS := [0.0, 1.2, 1.6]
+const DEMO_GUARD_HALF_ANGLE := 50.0
+const DEMO_GUARD_RANGE := 6.0
+## 过载点：用房间代表点而不是相机自身坐标，保证闪光能覆盖巡逻路线。
+const DEMO_HAZARD_POSITIONS := {
+	"C1": Vector3(-4, 0, 0),
+	"C2": Vector3(4, 0, 0),
+	"C3": Vector3(0, 0, -2),
+	"C4": Vector3(0, 0, 2),
+}
 
 var _demo_round: int = 0
 var _demo_score: int = 0
@@ -148,6 +173,7 @@ func _ready() -> void:
 	_load_level()
 	_bind_camera_views()
 	_bind_world()
+	_setup_demo_content()
 	_collect_npc_ids()
 	_setup_tape_archive()
 	register_input_actions()
@@ -211,6 +237,13 @@ func _build_systems() -> void:
 	_style_controller.name = "StyleController"
 	add_child(_style_controller)
 
+	_hazard_effects = HazardEffectsScript.new()
+	_hazard_effects.name = "HazardEffects"
+	add_child(_hazard_effects)
+	_hazard_effects.configure({
+		"flash": {"duration": 8.0, "radius": 7.0, "blocking": true},
+	})
+
 	_camera_session.overload_started.connect(_on_camera_overload)
 	_camera_session.burned.connect(_on_camera_burned)
 	_camera_session.cooldown_changed.connect(_on_camera_cooldown)
@@ -241,6 +274,55 @@ func _bind_camera_views() -> void:
 	if _overview_camera != null:
 		_overview_camera.current = true
 	_camera_view_id = ""
+
+
+## Demo 内容：磁带拾取点 + 巡逻敌人 + 敌人占位视觉。都放在 World 下，
+## 不注册到 GuideBus（避免改变 W2 的目标表），由 GameRoot 自己驱动。
+func _setup_demo_content() -> void:
+	var world := get_node_or_null(WORLD_NODE)
+	if world == null:
+		return
+	_tape_pickup = TapePickupScript.new()
+	_tape_pickup.name = "TapePickup"
+	_tape_pickup.position = Vector3(3.1, 0.55, 2.3)
+	world.add_child(_tape_pickup)
+
+	_enemy = EnemyPatrolScript.new()
+	_enemy.name = "Guard"
+	add_child(_enemy)
+	_enemy.setup(DEMO_GUARD_ROUTE, 0.0)
+	_enemy.set_vision(DEMO_GUARD_HALF_ANGLE, DEMO_GUARD_RANGE)
+	_enemy.set_hazard_source(_hazard_effects)
+
+	_enemy_visual = MeshInstance3D.new()
+	_enemy_visual.name = "GuardVisual"
+	var mesh := CapsuleMesh.new()
+	mesh.radius = 0.32
+	mesh.height = 1.3
+	_enemy_visual.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.88, 0.22, 0.18)
+	_enemy_visual.material_override = material
+	world.add_child(_enemy_visual)
+	_update_guard_visual()
+
+	_hazard_effects.bind_overload_source(
+		_camera_session, Callable(self, "_camera_hazard_position"), "flash")
+
+
+## 闪光危险落在房间代表点，而不是相机高处，保证能挡住地面巡逻。
+func _camera_hazard_position(camera_id: String) -> Vector3:
+	return DEMO_HAZARD_POSITIONS.get(camera_id, Vector3.ZERO)
+
+
+func _update_guard_visual() -> void:
+	if _enemy_visual == null or _enemy == null:
+		return
+	_enemy_visual.visible = _enemy_active
+	if _enemy_active:
+		var position_value: Variant = _enemy.get_position()
+		if position_value is Vector3:
+			_enemy_visual.position = (position_value as Vector3) + Vector3(0.0, 0.75, 0.0)
 
 
 func _load_data() -> void:
@@ -427,6 +509,8 @@ func handle_action(action: String) -> bool:
 			return _action_toggle_indicator()
 		"game_door":
 			return _action_open_door()
+		"game_pickup":
+			return _action_pickup()
 		"game_cycle_npc":
 			return _action_cycle_npc()
 		"game_dialogue":
@@ -464,6 +548,10 @@ func _action_send_hint(action: String) -> bool:
 	var target := _current_npc_id()
 	if target.is_empty():
 		return false
+	if action == "game_hint_open" and _demo_phase == "playing" and not _has_door_clue():
+		_demo_message = "门锁着：先按 E 拾取磁带里的门禁线索"
+		_refresh_demo_hud()
+		return false
 	var ok := send_hint(target, String(HINT_TEXTS.get(action, "")))
 	_refresh_hud()
 	return ok
@@ -482,7 +570,48 @@ func _action_toggle_indicator() -> bool:
 func _action_open_door() -> bool:
 	if _doors.is_empty():
 		return false
-	return open_door(_first_target_id(_doors, "door_a"))
+	if _demo_phase == "playing" and not _has_door_clue():
+		_demo_message = "门锁着：先按 E 拾取磁带里的门禁线索"
+		_refresh_demo_hud()
+		return false
+	var ok := open_door(_first_target_id(_doors, "door_a"))
+	if ok:
+		_demo_message = "门已打开：按 F 带朋友到门口"
+		_refresh_demo_hud()
+	return ok
+
+
+## E：拾取本轮磁带，登记门禁线索并加 demo 分。已拾取/没有 demo 时返回 false。
+func _action_pickup() -> bool:
+	if _demo_phase != "playing" or _tape_pickup == null:
+		_demo_message = "现在没有可拾取的磁带"
+		_refresh_demo_hud()
+		return false
+	if _tape_pickup.is_collected():
+		_demo_message = "这盘磁带已经拿过了"
+		_refresh_demo_hud()
+		return false
+	if not _tape_pickup.collect():
+		return false
+	var tape_id := String(_tape_pickup.tape_id)
+	var archive := get_node_or_null("/root/TapeArchive")
+	if archive != null and archive.has_method("discover"):
+		if archive.has_method("load_default_library") and archive.get_tapes().is_empty():
+			archive.load_default_library()
+		archive.discover(tape_id)
+	var clue_id := String(_tape_pickup.clue_id)
+	if not clue_id.is_empty():
+		var clues := get_node_or_null("/root/ClueManager")
+		if clues != null and clues.has_method("register_flag"):
+			clues.register_flag(clue_id)
+	_demo_tape_collected = true
+	_demo_score += DEMO_TAPE_BONUS
+	if _has_door_clue():
+		_demo_message = "拾取磁带 %s：门禁线索已登记，按 H 开门" % tape_id
+	else:
+		_demo_message = "拾取磁带 %s：+%d 分" % [tape_id, DEMO_TAPE_BONUS]
+	_refresh_demo_hud()
+	return true
 
 
 ## 优先用关卡的固定 id；找不到才回落到扫描顺序（避免加一盏灯就切错目标）。
@@ -699,6 +828,15 @@ func start_demo() -> void:
 	if is_instance_valid(_camera_session):
 		_camera_session.reset()
 		_set_camera_view("")
+	if is_instance_valid(_hazard_effects):
+		_hazard_effects.reset()
+	# 新开一局 = 清空上一局的线索/磁带知识，保证每轮目标都从“拾取”开始。
+	var clues := get_node_or_null("/root/ClueManager")
+	if clues != null and clues.has_method("clear"):
+		clues.clear()
+	var archive := get_node_or_null("/root/TapeArchive")
+	if archive != null and archive.has_method("reset_discovery"):
+		archive.reset_discovery()
 	_demo_round = 1
 	_demo_score = 0
 	_demo_phase = "playing"
@@ -718,20 +856,38 @@ func get_demo_state() -> Dictionary:
 		"score": _demo_score,
 		"message": _demo_message,
 		"burned": _burned_cameras(),
+		"objective": _demo_objective(),
+		"clue_found": _has_door_clue(),
+		"tape_collected": _demo_tape_collected,
+		"door_open": _demo_door_open(),
+		"enemy_active": _enemy_active,
 	}
 
 
-func _begin_demo_round(discover_tape: bool = true) -> void:
+func _begin_demo_round(_discover_tape: bool = true) -> void:
 	_demo_time_left = DEMO_ROUND_TIME
 	_demo_round_burned = _burned_cameras()
-	_demo_message = "第 %d/%d 轮：按 F 让朋友跟上，带他到门口" % [_demo_round, DEMO_ROUNDS]
 	if _loop_manager.get_round_index() == 0:
 		start_round()
 		reset_for_loop(0.0)
 	else:
 		restart_round(0.0)
-	if discover_tape:
-		_discover_next_tape()
+	# 内容按轮次布置：第 1 轮教学，2/3 轮敌人巡逻；每轮都有一盘可拾取磁带。
+	_demo_tape_collected = false
+	if _tape_pickup != null:
+		var tape_index := clampi(_demo_round - 1, 0, DEMO_TAPES.size() - 1)
+		_tape_pickup.reset(DEMO_TAPES[tape_index], DEMO_CLUE)
+	_enemy_active = _demo_round >= 2
+	if _enemy != null:
+		var speed_index := clampi(_demo_round - 1, 0, DEMO_GUARD_SPEEDS.size() - 1)
+		_enemy.setup(DEMO_GUARD_ROUTE, float(DEMO_GUARD_SPEEDS[speed_index]))
+		_enemy.set_vision(DEMO_GUARD_HALF_ANGLE, DEMO_GUARD_RANGE)
+	_update_guard_visual()
+	if _hazard_effects != null:
+		_hazard_effects.reset()
+	_demo_message = "第 %d/%d 轮开始" % [_demo_round, DEMO_ROUNDS]
+	if _enemy_active:
+		_demo_message += "：敌人巡逻中，过载机位可闪光挡住它"
 	_ensure_demo_hud()
 	_refresh_demo_hud()
 
@@ -741,11 +897,53 @@ func _update_demo(delta: float) -> void:
 		return
 	_demo_time_left = maxf(0.0, _demo_time_left - delta)
 	_apply_burn_penalty()
+	if _enemy_active and _enemy != null:
+		_enemy.tick(delta)
+		_update_guard_visual()
+		if not _guard_is_blocked() and _guard_sees_target():
+			_demo_fail("被巡逻发现")
+			_refresh_demo_hud()
+			return
 	if _demo_target_arrived():
-		_complete_demo_round()
+		if _demo_door_open():
+			_complete_demo_round()
+		else:
+			_demo_message = "朋友到门口了，但门还锁着：按 E 找线索 / H 开门"
 	elif _demo_time_left <= 0.0:
 		_demo_fail("超时")
 	_refresh_demo_hud()
+
+
+func _guard_is_blocked() -> bool:
+	if _enemy == null:
+		return false
+	var blocked: Array = _enemy.get_state().get("blocked_by", [])
+	return not blocked.is_empty()
+
+
+func _guard_sees_target() -> bool:
+	var npc = _npcs.get(DEMO_TARGET_NPC)
+	if _enemy == null or npc == null or not is_instance_valid(npc):
+		return false
+	return bool(_enemy.sees({"id": DEMO_TARGET_NPC, "position": npc.position}))
+
+
+func _demo_door_open() -> bool:
+	var door = _doors.get("door_a")
+	return door != null and is_instance_valid(door) and bool(door.is_open())
+
+
+func _has_door_clue() -> bool:
+	var clues := get_node_or_null("/root/ClueManager")
+	return clues != null and clues.has_method("has_clue") and bool(clues.has_clue(DEMO_CLUE))
+
+
+func _demo_objective() -> String:
+	if not _has_door_clue():
+		return "按 E 拾取磁带，拿到门禁线索"
+	if not _demo_door_open():
+		return "按 H 开门（线索已到手）"
+	return "按 F 带朋友到门口"
 
 
 func _demo_target_arrived() -> bool:
@@ -764,7 +962,11 @@ func _apply_burn_penalty() -> void:
 			continue
 		_demo_round_burned.append(camera_id)
 		_demo_score -= DEMO_BURN_PENALTY
-		_demo_message = "摄像头 %s 过载烧毁，扣 %d 分" % [camera_id, DEMO_BURN_PENALTY]
+		if _enemy_active:
+			_demo_message = "摄像头 %s 过载烧毁：闪光挡住巡逻（-%d 分）" % [
+				camera_id, DEMO_BURN_PENALTY]
+		else:
+			_demo_message = "摄像头 %s 过载烧毁，扣 %d 分" % [camera_id, DEMO_BURN_PENALTY]
 
 
 func _complete_demo_round() -> void:
@@ -807,18 +1009,6 @@ func _burned_cameras() -> Array[String]:
 	return burned
 
 
-func _discover_next_tape() -> void:
-	var archive = get_node_or_null("/root/TapeArchive")
-	if archive == null or not archive.has_method("get_tapes"):
-		return
-	if archive.has_method("load_default_library") and archive.get_tapes().is_empty():
-		archive.load_default_library()
-	for tape in archive.get_tapes():
-		if not bool(tape.known_to_player):
-			archive.discover(String(tape.tape_id))
-			return
-
-
 func _ensure_demo_hud() -> void:
 	if _demo_hud != null:
 		return
@@ -838,9 +1028,13 @@ func _ensure_demo_hud() -> void:
 func _refresh_demo_hud() -> void:
 	if _demo_label == null:
 		return
+	var objective_line := "目标：%s" % _demo_objective()
+	if _enemy_active:
+		objective_line += " ｜ 敌人巡逻：过载机位可闪光挡住它"
 	if _demo_phase == "playing":
-		_demo_label.text = "第 %d/%d 轮 ｜ 剩余 %ds ｜ 得分 %d\n%s" % [
-			_demo_round, DEMO_ROUNDS, int(ceil(_demo_time_left)), _demo_score, _demo_message]
+		_demo_label.text = "第 %d/%d 轮 ｜ 剩余 %ds ｜ 得分 %d\n%s\n%s" % [
+			_demo_round, DEMO_ROUNDS, int(ceil(_demo_time_left)), _demo_score,
+			_demo_message, objective_line]
 	else:
 		_demo_label.text = "第 %d/%d 轮 ｜ 得分 %d\n%s" % [
 			_demo_round, DEMO_ROUNDS, _demo_score, _demo_message]
@@ -910,6 +1104,9 @@ func tick(delta: float) -> void:
 	# 录像带检查面板是暂停界面：打开时世界时间、机位停留、敌人巡逻全部冻结。
 	if _tape_open:
 		return
+	# 先结算旧危险，再让摄像头过载产生新危险；否则大 delta 会把刚触发的闪光当场过期。
+	if is_instance_valid(_hazard_effects):
+		_hazard_effects.tick(delta)
 	if is_instance_valid(_camera_session):
 		_camera_session.tick(delta)
 	for target_id in _npcs:
@@ -1051,6 +1248,12 @@ func reset_for_loop(_time: float) -> void:
 		var door = _doors[target_id]
 		if is_instance_valid(door) and _initial_door_states.has(target_id):
 			door.from_dict({"open": bool(_initial_door_states[target_id])})
+	if is_instance_valid(_hazard_effects):
+		_hazard_effects.reset()
+	if _enemy != null:
+		_enemy_active = false
+		_enemy.setup(DEMO_GUARD_ROUTE, 0.0)
+		_update_guard_visual()
 	_refresh_hud()
 
 
@@ -1074,6 +1277,18 @@ func get_dialogue_controller() -> Control:
 
 func get_style_controller() -> Node:
 	return _style_controller
+
+
+func get_guard() -> Node:
+	return _enemy
+
+
+func get_tape_pickup() -> Node3D:
+	return _tape_pickup
+
+
+func get_hazard_effects() -> Node:
+	return _hazard_effects
 
 
 func is_round_active() -> bool:
@@ -1103,6 +1318,9 @@ func get_state() -> Dictionary:
 
 func _on_camera_overload(camera_id: String) -> void:
 	camera_overloaded.emit(camera_id)
+	if _demo_phase == "playing" and _enemy_active:
+		_demo_message = "机位 %s 过载：闪光挡住巡逻" % camera_id
+		_refresh_demo_hud()
 
 
 func _on_hint_sent(target_id: String, text: String) -> void:

@@ -18,8 +18,9 @@ const REQUIRED_METHODS: Array[String] = [
 	"switch_camera", "leave_camera", "send_hint", "set_indicator", "open_door",
 	"start_dialogue", "apply_style", "start_round", "end_round", "restart_round",
 	"tick", "reset_for_loop", "get_state",
-	"get_camera_session", "get_guide_bus", "get_loop_manager",
+	"get_camera_session", "get_camera_view_state", "get_guide_bus", "get_loop_manager",
 	"get_dialogue_controller", "get_style_controller",
+	"get_guard", "get_tape_pickup", "get_hazard_effects",
 ]
 const REQUIRED_SIGNALS: Array[String] = [
 	"camera_overloaded", "hint_sent", "round_started", "round_ended", "definition_error",

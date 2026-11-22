@@ -49,10 +49,11 @@ func _test_full_run() -> void:
 	_check("有 demo HUD", instance.get_node_or_null("DemoHud") != null)
 	var hud_label := instance.get_node_or_null("DemoHud").get_child(0) as Label
 	_check("HUD 显示轮次与目标", hud_label != null and hud_label.text.contains("第 1/3 轮")
-		and hud_label.text.contains("带他到门口"), "" if hud_label == null else hud_label.text)
+		and hud_label.text.contains("拾取磁带"), "" if hud_label == null else hud_label.text)
 	var archive = root.get_node_or_null("TapeArchive")
 	if archive != null:
-		_check("开局解锁第一盘磁带", archive.known_count() >= 1, str(archive.known_count()))
+		_check("开局不自动解锁磁带（要按 E 拾取）", archive.known_count() == 0,
+			str(archive.known_count()))
 
 	instance.tick(10.0)
 	state = instance.get_demo_state()
@@ -92,12 +93,25 @@ func _test_full_run() -> void:
 
 func _finish_round(instance) -> void:
 	var before_round := int(instance.get_demo_state()["round"])
+	# 目标链：先拾取本轮磁带拿到门禁线索，再开门；测试里把敌人视野关掉。
+	instance.handle_action("game_pickup")
+	instance.handle_action("game_door")
+	_disable_guard(instance)
 	instance.handle_action("game_hint_follow")
 	for i in range(40):
 		instance.tick(0.5)
 		var state: Dictionary = instance.get_demo_state()
 		if String(state["phase"]) != "playing" or int(state["round"]) != before_round:
 			return
+
+
+## 单元测试里把敌人挪到远处、视野归零，专注验证 demo 轮次/计分。
+func _disable_guard(instance) -> void:
+	var guard = instance.get_guard()
+	if guard == null:
+		return
+	guard.setup([Vector3(30, 0, 30)], 0.0)
+	guard.set_vision(1.0, 0.1)
 
 
 # --- 超时与重试 ----------------------------------------------------------------
