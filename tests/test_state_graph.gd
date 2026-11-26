@@ -12,6 +12,7 @@ const PALETTE_PATH := "res://scripts/state_graph/state_node_button.gd"
 const TMP_SAVE := "user://state_graph_save_test.json"
 const TMP_MOVE := "user://state_graph_move_test.json"
 const TMP_REQ := "user://state_graph_requirement_test.json"
+const TMP_POS := "user://state_graph_position_test.json"
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -261,13 +262,74 @@ func _run_editor_tests() -> void:
 	_check("画布出现结局节点", editor.get_graph_node_count() == editor.model.nodes.size())
 	_check("生成后清空待用条件", editor.outcome_panel.get_condition_ids().is_empty())
 
+	# 拖到画布上的结局节点上：应该加条件，而不是新建重复状态节点
+	var friend_follow := _find_node_id(editor.model, "朋友", "跟随")
+	var outcome_node := editor.canvas.get_node(custom_outcome) as GraphNode
+	var drop_at: Vector2 = outcome_node.position + outcome_node.size * outcome_node.scale * 0.5
+	var nodes_before: int = editor.model.nodes.size()
+	editor.canvas._drop_data(drop_at, {
+		"state_graph_node": true, "kind": "existing", "id": friend_follow,
+		"entity": "朋友", "state": "跟随",
+	})
+	_check("拖到结局节点上 = 加条件",
+		(editor.model.find_node(custom_outcome).get("requires", []) as Array).has(friend_follow),
+		str(editor.model.find_node(custom_outcome)))
+	_check("拖到结局节点上不会新建节点", editor.model.nodes.size() == nodes_before,
+		"%d vs %d" % [editor.model.nodes.size(), nodes_before])
+
+	# 信号层：端口连线 / 断线（不是只调模型 API）
+	var wait_id := _find_node_id(editor.model, "朋友", "等待")
+	var door_id := _find_node_id(editor.model, "朋友", "到门口")
+	editor.canvas.emit_signal("connection_request", StringName(wait_id), 0, StringName(door_id), 0)
+	_check("connection_request 信号新增切换", _edge_exists(editor.model, wait_id, door_id),
+		str(editor.model.last_errors))
+	editor.canvas.emit_signal("disconnection_request", StringName(wait_id), 0, StringName(door_id), 0)
+	_check("disconnection_request 信号删除切换", not _edge_exists(editor.model, wait_id, door_id))
+
+	var round_win_before := int((editor.model.find_node("round_win").get("requires", []) as Array).size())
+	editor.canvas.emit_signal("connection_request", StringName(wait_id), 1, StringName("round_win"), 0)
+	_check("「作为条件」端口信号加入结局条件",
+		(editor.model.find_node("round_win").get("requires", []) as Array).has(wait_id))
+	editor.canvas.emit_signal("connection_request", StringName(wait_id), 1, StringName("round_win"), 0)
+	_check("重复条件连线被拒",
+		int((editor.model.find_node("round_win").get("requires", []) as Array).size()) == round_win_before + 1)
+	editor.canvas.emit_signal("disconnection_request", StringName(wait_id), 1, StringName("round_win"), 0)
+	_check("断线移除结局条件",
+		not (editor.model.find_node("round_win").get("requires", []) as Array).has(wait_id))
+
+	var doomed: String = editor.add_state_node("敌人", "临时删除", Vector2(10, 10))
+	var to_delete: Array[StringName] = [StringName(doomed)]
+	editor.canvas.emit_signal("delete_nodes_request", to_delete)
+	_check("delete_nodes_request 信号删节点", not editor.model.has_node(doomed))
+
+	# 位置：end_node_move → sync → 保存/重载后 pos 保留
+	var move_id := _find_node_id(editor.model, "回合", "进行中")
+	_check("保存位置前是干净的", editor.save_to(TMP_POS) and not editor.is_dirty())
+	var move_graph_node := editor.canvas.get_node(move_id) as GraphNode
+	move_graph_node.position_offset = Vector2(777, 333)
+	editor.canvas.emit_signal("end_node_move")
+	var moved_pos: Vector2 = editor.model.find_node(move_id).get("pos", Vector2.ZERO)
+	_check("拖动后标记未保存", editor.is_dirty())
+	_check("位置写回模型", moved_pos.is_equal_approx(Vector2(777, 333)), str(moved_pos))
+	_check("保存位置", editor.save_to(TMP_POS), str(editor.model.last_errors))
+	_check("重载位置", editor.load_from(TMP_POS), str(editor.model.last_errors))
+	var reload_pos: Vector2 = editor.model.find_node(move_id).get("pos", Vector2.ZERO)
+	_check("重载后位置保留", reload_pos.is_equal_approx(Vector2(777, 333)), str(reload_pos))
+
+	# 重建后选中态要恢复（不能检查器显示已选、画布却没有高亮）
+	editor.select_node("round_playing")
+	var keep_id: String = editor.model.add_node("测试", "保持选中", Vector2(1, 1))
+	var kept_node := editor.canvas.get_node("round_playing") as GraphNode
+	_check("模型变更后选中态恢复", kept_node != null and kept_node.selected)
+	editor.model.remove_node(keep_id)
+
 	# 整理布局 + 带条件的存取
 	editor.arrange_layout()
 	_check("整理布局后画布节点仍一致", editor.get_graph_node_count() == editor.model.nodes.size())
 	_check("保存带条件的图", editor.save_to(TMP_REQ), str(editor.model.last_errors))
 	_check("重新载入带条件的图", editor.load_from(TMP_REQ), str(editor.model.last_errors))
 	_check("载入后结局条件保留",
-		int((editor.model.find_node(custom_outcome).get("requires", []) as Array).size()) == 2)
+		int((editor.model.find_node(custom_outcome).get("requires", []) as Array).size()) == 3)
 
 	editor.queue_free()
 

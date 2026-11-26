@@ -73,6 +73,7 @@ var _rebuilding := false
 var _selecting_silently := false
 ## GraphEdit 自己处理连线/删除的输入过程中不要整图重建，等这一帧结束再重建。
 var _suspend_rebuild := false
+var _selected_ids: Array[String] = []
 
 
 func _ready() -> void:
@@ -140,6 +141,7 @@ func rebuild() -> void:
 			if model.node_kind(state_id) == "state":
 				connect_node(StringName(state_id), 1, StringName(outcome_id), 0)
 
+	_apply_selection_visuals()
 	scroll_offset = keep_offset
 	zoom = keep_zoom
 	_rebuilding = false
@@ -330,9 +332,18 @@ func fit_view() -> void:
 
 
 func set_selection(node_ids: Array) -> void:
-	var wanted := {}
+	_selected_ids.clear()
 	for raw in node_ids:
-		wanted[String(raw)] = true
+		var node_id := String(raw)
+		if model != null and model.has_node(node_id):
+			_selected_ids.append(node_id)
+	_apply_selection_visuals()
+
+
+func _apply_selection_visuals() -> void:
+	var wanted := {}
+	for node_id in _selected_ids:
+		wanted[node_id] = true
 	_selecting_silently = true
 	for child in get_children():
 		if child is GraphNode:
@@ -357,6 +368,12 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	if not _can_drop_data(at_position, data):
 		return
 	var dict: Dictionary = data
+	# 拖到结局节点上 = 给它加一个触发条件，而不是在画布上复制状态节点。
+	var outcome_id := _outcome_node_at(at_position)
+	if not outcome_id.is_empty():
+		_drop_condition_onto_outcome(outcome_id, dict)
+		return
+
 	var entity := String(dict.get("entity", "")).strip_edges()
 	var state := String(dict.get("state", "")).strip_edges()
 	if entity.is_empty() or state.is_empty():
@@ -367,6 +384,62 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	if not new_id.is_empty():
 		status_message.emit("已新建节点：%s · %s" % [entity, state])
 		node_picked.emit(new_id, false)
+
+
+func _outcome_node_at(at_position: Vector2) -> String:
+	var drop_global: Vector2 = get_global_transform() * at_position
+	var children := get_children()
+	# 后添加的节点在更上层，倒序找，避免重叠时命中底下的旧结局。
+	for index in range(children.size() - 1, -1, -1):
+		var child := children[index]
+		if not child is GraphNode:
+			continue
+		if String(model.node_kind(String(child.name))) != "outcome":
+			continue
+		var local: Vector2 = child.get_global_transform().affine_inverse() * drop_global
+		if Rect2(Vector2.ZERO, child.size).has_point(local):
+			return String(child.name)
+	return ""
+
+
+func _drop_condition_onto_outcome(outcome_id: String, dict: Dictionary) -> void:
+	var state_id := ""
+	var kind := String(dict.get("kind", ""))
+	if kind == "existing":
+		var candidate := String(dict.get("id", ""))
+		if String(model.node_kind(candidate)) != "state":
+			error_message.emit("只有状态节点能作为结局条件")
+			return
+		state_id = candidate
+	else:
+		var entity := String(dict.get("entity", "")).strip_edges()
+		var state := String(dict.get("state", "")).strip_edges()
+		if entity.is_empty() or state.is_empty():
+			error_message.emit("拖入的节点缺少实体/状态")
+			return
+		state_id = _find_state_id(entity, state)
+		if state_id.is_empty():
+			var outcome_node := get_node_or_null(NodePath(outcome_id)) as GraphNode
+			var base_pos := Vector2(40, 40)
+			if outcome_node != null:
+				base_pos = outcome_node.position_offset + Vector2(-320, 0)
+			state_id = String(model.add_node(entity, state, base_pos))
+	if state_id.is_empty():
+		error_message.emit("加入结局条件失败")
+		return
+	if model.add_requirement(outcome_id, state_id):
+		status_message.emit("已加入结局条件：%s" % model.node_label(state_id))
+	else:
+		error_message.emit("这个状态已经在结局条件里了")
+
+
+func _find_state_id(entity: String, state: String) -> String:
+	for node in model.nodes:
+		if String(node.get("kind", "state")) != "state":
+			continue
+		if String(node.get("entity", "")) == entity and String(node.get("state", "")) == state:
+			return String(node["id"])
+	return ""
 
 
 # --- 连线 ---------------------------------------------------------------------
@@ -435,9 +508,14 @@ func _on_delete_nodes_request(nodes: Array) -> void:
 	for raw in nodes:
 		removing.append(String(raw))
 	_suspend_rebuild = true
+	var removed := 0
 	for node_id in removing:
-		model.remove_node(node_id)
-	status_message.emit("已删除 %d 个节点" % removing.size())
+		if model.remove_node(node_id):
+			removed += 1
+	if removed > 0:
+		status_message.emit("已删除 %d 个节点" % removed)
+	else:
+		error_message.emit("没有删除任何节点")
 	_finish_suspended_rebuild()
 
 

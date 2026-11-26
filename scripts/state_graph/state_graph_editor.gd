@@ -188,6 +188,10 @@ func get_graph_node_count() -> int:
 	return canvas.get_graph_node_count()
 
 
+func is_dirty() -> bool:
+	return _dirty
+
+
 func select_node(node_id: String) -> void:
 	if not model.has_node(node_id):
 		return
@@ -212,7 +216,21 @@ func next_outcome_position(condition_ids: Array) -> Vector2:
 		count += 1
 	if count == 0:
 		return next_free_position()
-	return Vector2(max_x + 300.0, sum_y / float(count))
+	var candidate := Vector2(max_x + 300.0, sum_y / float(count))
+	# 新的结局不要压在已有节点上；往下找一个空位。
+	var guard := 0
+	while _position_taken(candidate) and guard < 30:
+		candidate.y += 135.0
+		guard += 1
+	return candidate
+
+
+func _position_taken(pos: Vector2) -> bool:
+	for node in model.nodes:
+		var other: Vector2 = node.get("pos", Vector2.ZERO)
+		if absf(other.x - pos.x) < 240.0 and absf(other.y - pos.y) < 120.0:
+			return true
+	return false
 
 
 func next_free_position() -> Vector2:

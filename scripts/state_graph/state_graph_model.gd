@@ -580,7 +580,8 @@ func _node_kind(node_id: String) -> String:
 	return "" if node.is_empty() else _node_kind_of(node)
 
 
-## id 用「实体_状态」的可读形式；中文会被抹成下划线，这时退回序号。
+## id 用「实体_状态」的可读形式：只保留合法标识符字符，空格/连字符换成下划线；
+## 中文在 Godot 里算合法标识符，所以也会原样保留；太短时兜底成 "n"。
 func _make_id(seed: String) -> String:
 	var base := ""
 	for index in seed.length():
