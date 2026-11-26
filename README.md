@@ -19,8 +19,9 @@ Godot 4.x 个项目。大体积资源位于 external-assets/，通过百度网�
 godot --path . scenes/<name>.tscn
 ```
 
-- `scenes/main.tscn`：**主入口 = 新的 3D 控制室 demo**（第一人称，椅子/监控台/滚动屏，
-  4 路监控、两个性格 NPC、激光引导、照片组合开门），见 [docs/ROOM_DEMO.md](docs/ROOM_DEMO.md)
+- `scenes/main.tscn`：**主入口 = 新的 3D 控制室 demo**（第一人称，墙上的 3D 监控大屏/滚动屏，
+  4 路监控、两个性格 NPC、激光引导、照片组合开门；坐下仍保持第一人称视角），
+  见 [docs/ROOM_DEMO.md](docs/ROOM_DEMO.md)
 - `scenes/game_root.tscn`：旧的 3 轮可玩 demo（`E` 拾取磁带拿线索 → `H` 开门 → `F` 把朋友
   引导到门口；第 2/3 轮有巡逻敌人；`1–4` 切换真实机位画面、`R` 失败重试 / 通关重玩，完整键位见
   [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)）

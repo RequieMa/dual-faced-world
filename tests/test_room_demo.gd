@@ -132,11 +132,21 @@ func _run_scene_tests() -> void:
 	_check("场景有监控 UI", demo.ui != null)
 	_check("场景有摄像头会话", demo.camera_session != null)
 	_check("场景有照片仓库", demo.photo_store != null)
+	_check("场景有 3D 监控屏 SubViewport", demo.monitor_viewport != null)
+	_check("3D 监控屏有屏幕 UI", demo.monitor_ui != null)
+	_check("场景有 3D 滚动屏 SubViewport", demo.scroll_viewport != null)
+	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
+	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
 
 	_check("初始未坐下", not demo.player.seated)
 	demo.set_seated(true)
 	_check("坐下后玩家状态同步", demo.player.seated)
 	_check("坐下后监控 UI 可见", demo.ui.is_seat_visible())
+	var motion := InputEventMouseMotion.new()
+	motion.position = Vector2(root.size) * 0.5
+	_check("坐下后鼠标事件能转发到 3D 监控屏", demo._forward_mouse_to_monitor(motion))
+	demo.monitor_ui.feed_clicked.emit("C2")
+	_check("屏幕 UI 点击信号能选中机位", String(demo.selected_feed) == "C2")
 	demo.set_seated(false)
 	_check("站起后玩家状态同步", not demo.player.seated)
 

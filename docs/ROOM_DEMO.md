@@ -5,9 +5,13 @@
 
 ## 1. 一句话玩法
 
-玩家被关在控制室里，面对监控台和滚动屏；坐进椅子后用 4 路摄像头观察两个房间里的
-两个 NPC，用激光/截图引导他们找线索。NPC 找到线索会自动拍照；玩家把两张门禁码照片
-拖到滚动屏组合出 `A-317`，门解锁后回到门口按 `E` 离开。
+玩家被关在控制室里，面对墙上的监控大屏和滚动屏；坐进椅子后**仍然保持第一人称视角**，
+只是键鼠可以操作墙面屏幕。用 4 路摄像头观察两个房间里的两个 NPC，用激光/截图引导他们
+找线索。NPC 找到线索会自动拍照；玩家把两张门禁码照片拖到滚动屏组合出 `A-317`，
+门解锁后回到门口按 `E` 离开。
+
+> 监控台和滚动屏都是墙上的 3D 物理屏幕：内容由 `SubViewport` 渲染再贴到 QuadMesh 上，
+> 不是坐下后弹一个全屏 2D 面板。鼠标点击通过射线换算成屏幕纹理坐标后转发进 SubViewport。
 
 ## 2. 操作
 
@@ -15,11 +19,11 @@
 |---|---|
 | `WASD` | 第一人称移动 |
 | 鼠标 | 看（非坐下时捕获鼠标） |
-| 靠近椅子 `F` | 坐下 / 站起 |
-| 坐下后点小画面 | 放大该摄像头 |
+| 靠近椅子 `F` | 坐下 / 站起；坐下后仍是第一人称看墙上的屏幕 |
+| 坐下后点墙上画面 | 放大该摄像头（鼠标射线转发到屏幕 SubViewport） |
 | 放大画面右键 | 朝画面里的位置发一束激光，引导 NPC |
 | `S`（坐下、放大画面时） | 截图当前画面，照片进底部仓库 |
-| 把底部照片拖到右侧滚动屏 | 组合线索 / 引导 NPC |
+| 把底部照片拖到墙上滚动屏 | 组合线索 / 引导 NPC（拖放区对齐 3D 屏幕的投影） |
 | `E`（靠近门） | 门解锁后离开；未解锁只提示 |
 | `R`（完成界面） | 重开 |
 
@@ -50,7 +54,9 @@
 | 第一人称玩家 | `scripts/room_demo/room_player.gd` |
 | NPC 行为/视锥 | `scripts/room_demo/npc_actor.gd` |
 | 照片仓库/组合 | `scripts/room_demo/photo_store.gd` |
-| HUD + 监控台 UI | `scripts/room_demo/room_ui.gd` |
+| HUD / 照片仓库 / 拖放区 | `scripts/room_demo/room_ui.gd` |
+| 3D 监控屏内容 | `scripts/room_demo/monitor_ui.gd` |
+| 3D 滚动屏内容 | `scripts/room_demo/scroll_screen_ui.gd` |
 | 测试 | `tests/test_room_demo.gd` |
 
 旧 demo 的回归仍走 `scenes/game_root.tscn`；`tests/test_game_root_*.gd` 已改成直接加载
@@ -59,8 +65,8 @@
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd
-godot --headless --path . --script tests/run_all.gd
+godot --headless --path . --script tests/test_room_demo.gd   # 59 checks
+godot --headless --path . --script tests/run_all.gd          # 26 suites
 ```
 
 交互自检：

@@ -39,12 +39,26 @@ var _screen_drop: Button
 var _screen_result: Label
 var _screen_list: VBoxContainer
 var _complete: Control
+var _scroll_drop: Button
+var _seat_active := false
 
 
 func setup() -> void:
 	_build_hud()
-	_build_seat_ui()
+	_build_scroll_overlay()
 	_build_complete()
+
+
+func _build_scroll_overlay() -> void:
+	_scroll_drop = PhotoDropZone.new()
+	_scroll_drop.text = ""
+	_scroll_drop.visible = false
+	_scroll_drop.add_theme_stylebox_override("normal",
+		_panel_style(Color(0.08, 0.2, 0.2, 0.22), Color(0.35, 0.9, 0.82)))
+	_scroll_drop.add_theme_stylebox_override("hover",
+		_panel_style(Color(0.1, 0.3, 0.3, 0.32), Color(0.45, 1.0, 0.9)))
+	_scroll_drop.photo_dropped.connect(func(photo_id: String): photo_dropped.emit(photo_id))
+	add_child(_scroll_drop)
 
 
 func _build_hud() -> void:
@@ -274,12 +288,11 @@ func _build_complete() -> void:
 # --- 对外 API -----------------------------------------------------------------
 
 func is_seat_visible() -> bool:
-	return _seat_ui != null and _seat_ui.visible
+	return _seat_active
 
 
 func show_seat() -> void:
-	if _seat_ui != null:
-		_seat_ui.visible = true
+	_seat_active = true
 	if _crosshair != null:
 		_crosshair.visible = false
 	if _objective != null:
@@ -289,19 +302,13 @@ func show_seat() -> void:
 	if _notification != null:
 		_notification.visible = false
 	if _photo_panel != null:
-		if _photo_panel.get_parent() != _seat_ui:
-			_photo_panel.reparent(_seat_ui)
-		_photo_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		_photo_panel.offset_left = 12
-		_photo_panel.offset_right = -12
-		_photo_panel.offset_top = -126
-		_photo_panel.offset_bottom = -12
 		_photo_panel.visible = true
+	if _scroll_drop != null:
+		_scroll_drop.visible = true
 
 
 func hide_seat() -> void:
-	if _seat_ui != null:
-		_seat_ui.visible = false
+	_seat_active = false
 	if _crosshair != null:
 		_crosshair.visible = true
 	if _objective != null:
@@ -312,6 +319,20 @@ func hide_seat() -> void:
 		_notification.visible = true
 	if _seat_notice != null:
 		_seat_notice.text = ""
+	if _scroll_drop != null:
+		_scroll_drop.visible = false
+
+
+func set_scroll_drop_rect(rect: Rect2) -> void:
+	if _scroll_drop == null:
+		return
+	_scroll_drop.position = rect.position
+	_scroll_drop.size = rect.size
+
+
+func set_scroll_drop_visible(value: bool) -> void:
+	if _scroll_drop != null:
+		_scroll_drop.visible = value
 	if _photo_panel != null and _hud != null and _photo_panel.get_parent() != _hud:
 		_photo_panel.reparent(_hud)
 		_photo_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -457,6 +478,8 @@ func set_feed_hint(text: String) -> void:
 
 
 func show_complete(text: String = "你逃出去了。") -> void:
+	if _scroll_drop != null:
+		_scroll_drop.visible = false
 	if _hud != null:
 		_hud.visible = false
 	if _seat_ui != null:

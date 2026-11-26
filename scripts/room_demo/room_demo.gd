@@ -14,6 +14,8 @@ const PHOTO_STORE_SCRIPT := preload("res://scripts/room_demo/photo_store.gd")
 const NPC_SCRIPT := preload("res://scripts/room_demo/npc_actor.gd")
 const PLAYER_SCRIPT := preload("res://scripts/room_demo/room_player.gd")
 const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
+const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
+const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
 const CAMERA_SESSION_SCRIPT := preload("res://scripts/camera/camera_session.gd")
 
 const CHAIR_POS := Vector3(0, 0, 1.5)
@@ -24,6 +26,12 @@ const DOOR_CODE := "A-317"
 const CAMERA_DWELL := 45.0
 const CAMERA_COOLDOWN := 8.0
 const SIGNAL_RANGE := 22.0
+
+## 墙上的物理屏幕（内容来自 SubViewport，不是 2D 覆盖层）。
+const MONITOR_CENTER := Vector3(0, 1.7, -3.84)
+const MONITOR_SIZE := Vector2(3.6, 2.25)
+const SCROLL_CENTER := Vector3(3.2, 1.7, -3.84)
+const SCROLL_SIZE := Vector2(1.6, 1.0)
 
 const CAMERA_DEFS: Array[Dictionary] = [
 	{"id": "C1", "pos": Vector3(-8.4, 2.55, -21.2), "look": Vector3(-1.2, 1.2, -14.8), "room": "A"},
@@ -43,6 +51,12 @@ var feeds: Array[Dictionary] = []
 var ui: CanvasLayer = null
 var camera_session: Node = null
 var photo_store = null
+var monitor_viewport: SubViewport = null
+var monitor_ui: Control = null
+var scroll_viewport: SubViewport = null
+var scroll_ui: Control = null
+var monitor_mesh: MeshInstance3D = null
+var scroll_mesh: MeshInstance3D = null
 
 var selected_feed := ""
 var door_unlocked := false
@@ -70,6 +84,7 @@ func _ready() -> void:
 	_build_player()
 	_build_npcs()
 	_build_feed_viewports()
+	_build_screens()
 	_build_camera_session()
 	_build_photo_store()
 	_build_ui()
@@ -93,9 +108,10 @@ func tick(delta: float) -> void:
 	for npc in npcs:
 		if is_instance_valid(npc):
 			npc.tick(npc_delta, _clues)
-	if ui != null and camera_session != null:
-		ui.refresh_feed_states(camera_session)
+	if monitor_ui != null and camera_session != null:
+		monitor_ui.refresh_feed_states(camera_session)
 		_update_dwell_ui()
+	_update_scroll_drop_overlay()
 	if not demo_complete and door_unlocked and player != null and player.global_position.z > DOOR_POS.z + 0.8:
 		_complete()
 	if player != null and not player.seated:
@@ -121,13 +137,15 @@ func _on_seat_changed(seated: bool) -> void:
 		ui.show_seat()
 		ui.set_objective("监控两个 NPC：右键激光 / S 截图 / 拖照片到滚动屏")
 		ui.set_prompt("")
-		ui.set_feed_hint("点小画面放大；放大画面右键发射激光；照片拖到右侧滚动屏。")
+		if monitor_ui != null:
+			monitor_ui.set_notice("已坐下：点画面放大 / 右键发激光")
 	else:
 		ui.hide_seat()
 		close_feed()
 		ui.set_objective("回到门口按 E 离开（需要先组合出门禁码）")
 		ui.set_prompt("")
-		ui.refresh_feed_states(camera_session)
+		if monitor_ui != null:
+			monitor_ui.refresh_feed_states(camera_session)
 
 
 func _on_interaction(action: String) -> void:
@@ -148,8 +166,9 @@ func select_feed(feed_id: String) -> bool:
 		ui.set_notification("%s 不可用（冷却 / 烧毁 / 未知机位）" % feed_id)
 		return false
 	selected_feed = feed_id
-	ui.set_selected(feed_id)
-	ui.refresh_feed_states(camera_session)
+	monitor_ui.set_selected(feed_id)
+	monitor_ui.refresh_feed_states(camera_session)
+	monitor_ui.set_notice("正在看 %s" % feed_id)
 	ui.set_notification("正在看 %s" % feed_id)
 	return true
 
@@ -159,9 +178,10 @@ func close_feed() -> void:
 		return
 	camera_session.leave(selected_feed)
 	selected_feed = ""
-	if ui != null:
-		ui.set_selected("")
-		ui.refresh_feed_states(camera_session)
+	if monitor_ui != null:
+		monitor_ui.set_selected("")
+		monitor_ui.refresh_feed_states(camera_session)
+		monitor_ui.set_notice("已退出放大画面")
 
 
 func _build_camera_session() -> void:
@@ -178,12 +198,13 @@ func _build_camera_session() -> void:
 func _on_camera_overloaded(camera_id: String) -> void:
 	if selected_feed == camera_id:
 		selected_feed = ""
-		ui.set_selected("")
+		monitor_ui.set_selected("")
+	monitor_ui.set_notice("%s 停留过久，过载烧毁" % camera_id)
 	ui.set_notification("%s 停留过久，过载烧毁" % camera_id)
 	var feed := _feed_by_id(camera_id)
 	if not feed.is_empty():
 		_spawn_explosion(feed.get("camera").global_position)
-	ui.refresh_feed_states(camera_session)
+	monitor_ui.refresh_feed_states(camera_session)
 
 
 func _update_dwell_ui() -> void:
@@ -191,7 +212,7 @@ func _update_dwell_ui() -> void:
 		return
 	var state: Dictionary = camera_session.get_state()
 	if String(state.get("current", "")) == selected_feed:
-		ui.update_dwell(float(state.get("remain", 0.0)), CAMERA_DWELL)
+		monitor_ui.update_dwell(float(state.get("remain", 0.0)), CAMERA_DWELL)
 
 
 # --- 激光 ---------------------------------------------------------------------
@@ -222,10 +243,11 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 		if is_instance_valid(npc) and npc.receive_signal(point):
 			accepted.append(npc.npc_id)
 	last_laser = {"point": point, "accepted": accepted, "feed": feed_id}
-	if accepted.is_empty():
-		ui.set_notification("激光没有引起注意（超出范围或莽撞 NPC 暂时不信了）")
-	else:
-		ui.set_notification("激光信号：%s 响应" % "、".join(accepted))
+	var message := "激光没有引起注意（超出范围或莽撞 NPC 暂时不信了）"
+	if not accepted.is_empty():
+		message = "激光信号：%s 响应" % "、".join(accepted)
+	monitor_ui.set_notice(message)
+	ui.set_notification(message)
 	return last_laser
 
 
@@ -298,9 +320,9 @@ func _on_clue_collected(clue_id: String, clue_position: Vector3) -> void:
 		"position": clue_position,
 		"texture": texture,
 	})
-	ui.set_notification("NPC 拍到照片：%s" % label)
-	ui.set_screen_result("照片已放入底部仓库，可拖到滚动屏。")
+	_notify("NPC 拍到照片：%s" % label)
 	_refresh_photos()
+	_refresh_scroll_screen("照片已放入底部仓库，可拖到滚动屏。")
 	if photo_id.is_empty():
 		push_warning("线索照片创建失败: %s" % clue_id)
 
@@ -319,10 +341,10 @@ func capture_clue_photo(clue_id: String) -> String:
 
 func take_screenshot() -> String:
 	if selected_feed.is_empty() or camera_session == null:
-		ui.set_notification("先放大一路画面再按 S")
+		_notify("先放大一路画面再按 S")
 		return ""
 	if String(camera_session.get_state().get("current", "")) != selected_feed:
-		ui.set_notification("当前机位不在监控中")
+		_notify("当前机位不在监控中")
 		return ""
 	var feed := _feed_by_id(selected_feed)
 	if feed.is_empty():
@@ -334,8 +356,8 @@ func take_screenshot() -> String:
 			"focus_point": point,
 			"texture": texture,
 		})
-	ui.set_notification("已截图 %s，拖到滚动屏可让 NPC 去查看" % selected_feed)
-	ui.set_screen_result("截图已放入底部仓库。")
+	_notify("已截图 %s，拖到滚动屏可让 NPC 去查看" % selected_feed)
+	_refresh_scroll_screen("截图已放入底部仓库。")
 	return photo_id
 
 
@@ -344,10 +366,10 @@ func drop_photo_to_screen(photo_id: String) -> Dictionary:
 		return {}
 	var result: Dictionary = photo_store.drop_to_screen(photo_id, elapsed)
 	if not bool(result.get("accepted", false)):
-		ui.set_notification(String(result.get("reason", "照片无法使用")))
+		_notify(String(result.get("reason", "照片无法使用")))
 		return result
 	if bool(result.get("combined", false)):
-		ui.set_screen_result("滚动屏组合成功：门禁码 %s" % String(result.get("code", "")))
+		_refresh_scroll_screen("组合成功：门禁码 %s" % String(result.get("code", "")))
 		unlock_door()
 	elif bool(result.get("screenshot", false)):
 		var point: Vector3 = result.get("focus_point", Vector3.ZERO)
@@ -355,10 +377,25 @@ func drop_photo_to_screen(photo_id: String) -> Dictionary:
 		for npc in npcs:
 			if is_instance_valid(npc) and npc.receive_signal(point):
 				accepted.append(npc.npc_id)
-		ui.set_screen_result("截图已上屏：%s 前往查看" % ("、".join(accepted) if not accepted.is_empty() else "没人响应"))
+		_refresh_scroll_screen("截图已上屏：%s 前往查看" % ("、".join(accepted) if not accepted.is_empty() else "没人响应"))
 	else:
-		ui.set_screen_result(String(result.get("reason", "已放上滚动屏")))
+		_refresh_scroll_screen(String(result.get("reason", "已放上滚动屏")))
 	return result
+
+
+func _refresh_scroll_screen(result_text: String = "") -> void:
+	if scroll_ui == null or photo_store == null:
+		return
+	var text := result_text
+	if text.is_empty() and not photo_store.last_result.is_empty():
+		text = String(photo_store.last_result.get("reason", ""))
+	scroll_ui.refresh(photo_store.photos, photo_store.screen_photo_ids, text)
+
+
+func _notify(message: String) -> void:
+	ui.set_notification(message)
+	if monitor_ui != null:
+		monitor_ui.set_notice(message)
 
 
 func _refresh_photos() -> void:
@@ -396,6 +433,10 @@ func _complete() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if player != null and player.seated and not demo_complete:
+		if _forward_mouse_to_monitor(event):
+			get_viewport().set_input_as_handled()
+			return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -404,6 +445,83 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif key.keycode == KEY_R and demo_complete:
 		get_tree().reload_current_scene()
+
+
+## 把鼠标事件按 3D 大屏的命中点换算成 SubViewport 像素，转发给屏幕里的 UI。
+func _forward_mouse_to_monitor(event: InputEvent) -> bool:
+	if monitor_viewport == null or player == null or player.camera == null:
+		return false
+	var mouse_position := Vector2.ZERO
+	var motion := event as InputEventMouseMotion
+	var button := event as InputEventMouseButton
+	if motion != null:
+		mouse_position = motion.position
+	elif button != null:
+		mouse_position = button.position
+	else:
+		return false
+	var camera: Camera3D = player.camera
+	var from: Vector3 = camera.project_ray_origin(mouse_position)
+	var direction: Vector3 = camera.project_ray_normal(mouse_position)
+	var plane := Plane(Vector3(0, 0, 1), MONITOR_CENTER.z)
+	var hit: Variant = plane.intersects_ray(from, direction)
+	if not (hit is Vector3):
+		return false
+	var local: Vector3 = (hit as Vector3) - MONITOR_CENTER
+	if absf(local.x) > MONITOR_SIZE.x * 0.5 or absf(local.y) > MONITOR_SIZE.y * 0.5:
+		return false
+	var uv := Vector2(local.x / MONITOR_SIZE.x + 0.5, 0.5 - local.y / MONITOR_SIZE.y)
+	var pixel := Vector2(uv.x * float(monitor_viewport.size.x), uv.y * float(monitor_viewport.size.y))
+	if motion != null:
+		var forwarded := InputEventMouseMotion.new()
+		forwarded.position = pixel
+		forwarded.global_position = pixel
+		forwarded.relative = motion.relative
+		forwarded.button_mask = motion.button_mask
+		monitor_viewport.push_input(forwarded, true)
+	elif button != null:
+		var forwarded := InputEventMouseButton.new()
+		forwarded.position = pixel
+		forwarded.global_position = pixel
+		forwarded.button_index = button.button_index
+		forwarded.pressed = button.pressed
+		forwarded.double_click = button.double_click
+		monitor_viewport.push_input(forwarded, true)
+	return true
+
+
+## 把 3D 滚动屏投影到屏幕坐标，给 HUD 上的透明拖放接收区对齐。
+func _update_scroll_drop_overlay() -> void:
+	if ui == null:
+		return
+	if player == null or not player.seated or player.camera == null or demo_complete:
+		ui.set_scroll_drop_visible(false)
+		return
+	var camera: Camera3D = player.camera
+	if camera.is_position_behind(SCROLL_CENTER):
+		ui.set_scroll_drop_visible(false)
+		return
+	var half := SCROLL_SIZE * 0.5
+	var corners := [
+		SCROLL_CENTER + Vector3(-half.x, half.y, 0),
+		SCROLL_CENTER + Vector3(half.x, half.y, 0),
+		SCROLL_CENTER + Vector3(-half.x, -half.y, 0),
+		SCROLL_CENTER + Vector3(half.x, -half.y, 0),
+	]
+	var min_point := Vector2(INF, INF)
+	var max_point := Vector2(-INF, -INF)
+	for corner in corners:
+		var screen_point: Vector2 = camera.unproject_position(corner)
+		min_point.x = minf(min_point.x, screen_point.x)
+		min_point.y = minf(min_point.y, screen_point.y)
+		max_point.x = maxf(max_point.x, screen_point.x)
+		max_point.y = maxf(max_point.y, screen_point.y)
+	var rect := Rect2(min_point, max_point - min_point)
+	if rect.size.x < 10.0 or rect.size.y < 10.0:
+		ui.set_scroll_drop_visible(false)
+		return
+	ui.set_scroll_drop_rect(rect)
+	ui.set_scroll_drop_visible(true)
 
 
 # --- 3D 装配 -----------------------------------------------------------------
@@ -453,12 +571,12 @@ func _build_control_room() -> void:
 	_add_box(_world, "ControlWallFrontR", Vector3(4.1, 3, 0.16), Vector3(2.95, 1.5, 4), wall)
 	_add_box(_world, "ControlDoorLintel", Vector3(1.8, 0.5, 0.16), Vector3(0, 2.75, 4), wall)
 
-	_add_box(_world, "Monitor", Vector3(3.6, 2.0, 0.14), Vector3(0, 1.7, -3.9),
-		Color(0.05, 0.08, 0.13), false, Color(0.1, 0.28, 0.45))
-	_add_label3d(_world, "监控台", Vector3(0, 2.9, -3.82), 40, Color(0.45, 0.78, 1.0))
-	_add_box(_world, "ScrollScreen", Vector3(1.4, 1.0, 0.12), Vector3(3.2, 1.7, -3.9),
-		Color(0.04, 0.08, 0.1), false, Color(0.15, 0.55, 0.55))
-	_add_label3d(_world, "滚动屏", Vector3(3.2, 2.35, -3.82), 30, Color(0.4, 0.9, 0.85))
+	_add_box(_world, "MonitorBacking", Vector3(3.8, 2.45, 0.08), Vector3(0, 1.7, -3.92),
+		Color(0.03, 0.04, 0.06), false)
+	_add_label3d(_world, "监控台", Vector3(0, 2.98, -3.82), 40, Color(0.45, 0.78, 1.0))
+	_add_box(_world, "ScrollBacking", Vector3(1.8, 1.2, 0.08), Vector3(3.2, 1.7, -3.92),
+		Color(0.03, 0.04, 0.06), false)
+	_add_label3d(_world, "滚动屏", Vector3(3.2, 2.42, -3.82), 30, Color(0.4, 0.9, 0.85))
 
 	# 椅子
 	_add_box(_world, "ChairSeat", Vector3(0.8, 0.12, 0.8), Vector3(0, 0.55, CHAIR_POS.z), Color(0.18, 0.2, 0.26))
@@ -620,6 +738,53 @@ func _build_feed_viewports() -> void:
 		})
 
 
+func _build_screens() -> void:
+	monitor_viewport = SubViewport.new()
+	monitor_viewport.name = "MonitorViewport"
+	monitor_viewport.size = Vector2i(1280, 800)
+	monitor_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(monitor_viewport)
+	monitor_ui = MONITOR_UI_SCRIPT.new()
+	monitor_viewport.add_child(monitor_ui)
+	monitor_ui.setup()
+	monitor_ui.refresh_feeds(feeds)
+	monitor_ui.feed_clicked.connect(select_feed)
+	monitor_ui.close_feed_requested.connect(close_feed)
+	monitor_ui.laser_requested.connect(fire_laser)
+	monitor_mesh = _make_screen_mesh("MonitorScreen", MONITOR_CENTER, MONITOR_SIZE,
+		monitor_viewport.get_texture())
+
+	scroll_viewport = SubViewport.new()
+	scroll_viewport.name = "ScrollViewport"
+	scroll_viewport.size = Vector2i(640, 400)
+	scroll_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(scroll_viewport)
+	scroll_ui = SCROLL_UI_SCRIPT.new()
+	scroll_viewport.add_child(scroll_ui)
+	scroll_ui.setup()
+	scroll_mesh = _make_screen_mesh("ScrollScreen", SCROLL_CENTER, SCROLL_SIZE,
+		scroll_viewport.get_texture())
+	_refresh_scroll_screen()
+
+
+func _make_screen_mesh(screen_name: String, center: Vector3, screen_size: Vector2,
+		texture: Texture2D) -> MeshInstance3D:
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = screen_name
+	var quad := QuadMesh.new()
+	quad.size = screen_size
+	mesh_instance.mesh = quad
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = texture
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	mesh_instance.material_override = material
+	mesh_instance.position = center
+	_world.add_child(mesh_instance)
+	return mesh_instance
+
+
 func _build_player() -> void:
 	player = PLAYER_SCRIPT.new()
 	player.name = "Player"
@@ -655,22 +820,19 @@ func _build_ui() -> void:
 	ui.name = "RoomUI"
 	add_child(ui)
 	ui.setup()
-	ui.refresh_feeds(feeds)
-	ui.feed_clicked.connect(select_feed)
-	ui.close_feed_requested.connect(close_feed)
-	ui.stand_requested.connect(func(): set_seated(false))
-	ui.laser_requested.connect(fire_laser)
 	ui.photo_dropped.connect(drop_photo_to_screen)
 
 
 func _refresh_all_ui() -> void:
 	if ui == null:
 		return
-	ui.refresh_feeds(feeds)
-	if camera_session != null:
-		ui.refresh_feed_states(camera_session)
+	if monitor_ui != null:
+		monitor_ui.refresh_feeds(feeds)
+		if camera_session != null:
+			monitor_ui.refresh_feed_states(camera_session)
 	if photo_store != null:
 		ui.refresh_photos(photo_store.photos)
+		_refresh_scroll_screen()
 
 
 # --- 工具 ---------------------------------------------------------------------
