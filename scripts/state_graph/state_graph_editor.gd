@@ -270,11 +270,22 @@ func set_status(message: String, is_error: bool = false) -> void:
 # --- 信号 ---------------------------------------------------------------------
 
 func _on_model_changed() -> void:
+	_prune_selection()
 	_dirty = true
 	_refresh_title()
 	_refresh_edge_options()
 	_refresh_edge_list()
 	_refresh_inspector()
+
+
+func _prune_selection() -> void:
+	var kept: Array[String] = []
+	for node_id in _selected_ids:
+		if model.has_node(node_id):
+			kept.append(node_id)
+	_selected_ids = kept
+	if not _selected_ids.has(_active_id):
+		_active_id = _selected_ids[-1] if not _selected_ids.is_empty() else ""
 
 
 func _refresh_title() -> void:
