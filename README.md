@@ -19,13 +19,11 @@ Godot 4.x 个项目。大体积资源位于 external-assets/，通过百度网�
 godot --path . scenes/<name>.tscn
 ```
 
-- `scenes/main.tscn`：游戏入口，实例化 `scenes/game_root.tscn`；启动即进入 **3 轮可玩 demo**
-  （`E` 拾取磁带拿线索 → `H` 开门 → `F` 把朋友引导到门口；第 2/3 轮有巡逻敌人，
-  先过载机位用闪光挡住它再按 `F`；`1–4` 切换真实机位画面、`R` 失败重试 / 通关重玩，完整键位见
+- `scenes/main.tscn`：**主入口 = 新的 3D 控制室 demo**（第一人称，椅子/监控台/滚动屏，
+  4 路监控、两个性格 NPC、激光引导、照片组合开门），见 [docs/ROOM_DEMO.md](docs/ROOM_DEMO.md)
+- `scenes/game_root.tscn`：旧的 3 轮可玩 demo（`E` 拾取磁带拿线索 → `H` 开门 → `F` 把朋友
+  引导到门口；第 2/3 轮有巡逻敌人；`1–4` 切换真实机位画面、`R` 失败重试 / 通关重玩，完整键位见
   [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)）
-- `scenes/game_root.tscn`：W12 集成场景（摄像头 / 引导 / 对话 / 双画风 / 循环），
-  玩法与接线见 [docs/MECHANICS_GAMEPLAY.md](docs/MECHANICS_GAMEPLAY.md)；设计决定见
-  [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)
 - `scenes/monitor_grid_demo.tscn`：监控墙 4 路放大 transition
 - `scenes/theater_monitor.tscn` / `scenes/theater_map.tscn`：剧院地图与监控
 - `scenes/integrated_sim.tscn`：集成 simulation（档案回放 + 实时推进 + 线索板）
@@ -43,6 +41,7 @@ godot --headless --path . --script tests/test_game_root_smoke.gd
 godot --headless --path . --script tests/test_integrated_sim.gd
 godot --headless --path . --script tests/test_integrated_sim_live.gd
 godot --headless --path . --script tests/test_puzzle_lab.gd
+godot --headless --path . --script tests/test_room_demo.gd
 ```
 
 `tests/run_all.gd` 会自动发现 `tests/smoke_test.gd` 与 `tests/test_*.gd`，新增套件不用改它。

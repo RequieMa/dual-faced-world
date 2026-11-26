@@ -2,7 +2,7 @@ extends SceneTree
 ## PR3 验收：真实 `_process` + auto_tick 时间轴（不手动 tick）。
 ## 用 Engine.time_scale 加速，但仍是引擎逐帧推进；覆盖倒计时、机位烧毁回总览、拾取/开门/过关。
 
-const MAIN_SCENE := "res://scenes/main.tscn"
+const SCENE_PATH := "res://scenes/game_root.tscn"
 const EXPECTED_CHECKS := 12
 
 var _failures: Array[String] = []
@@ -11,7 +11,7 @@ var _started := false
 
 
 func _initialize() -> void:
-	_check("存在 scenes/main.tscn", ResourceLoader.exists(MAIN_SCENE))
+	_check("存在 scenes/game_root.tscn", ResourceLoader.exists(SCENE_PATH))
 
 
 func _process(_delta: float) -> bool:
@@ -25,12 +25,11 @@ func _process(_delta: float) -> bool:
 func _run_tests() -> void:
 	Engine.time_scale = 20.0
 	Engine.max_fps = 60
-	var packed := ResourceLoader.load(MAIN_SCENE) as PackedScene
-	var main := packed.instantiate()
-	root.add_child(main)
+	var packed := ResourceLoader.load(SCENE_PATH) as PackedScene
+	var game_root := packed.instantiate()
+	root.add_child(game_root)
 	await process_frame
-	var game_root := main.get_node_or_null("GameRoot")
-	_check("主入口装配 GameRoot", game_root != null)
+	_check("game_root.tscn 可实例化并装配", game_root != null)
 	if game_root == null:
 		_finish()
 		return
@@ -64,7 +63,7 @@ func _run_tests() -> void:
 	_check("真实时间轴推进到第 2 轮",
 		int(game_root.get_demo_state()["round"]) >= 2, str(game_root.get_demo_state()))
 
-	main.free()
+	game_root.free()
 	_finish()
 
 

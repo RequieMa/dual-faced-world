@@ -12,7 +12,6 @@ extends SceneTree
 
 const SCENE_PATH := "res://scenes/game_root.tscn"
 const SCRIPT_PATH := "res://scripts/game_root.gd"
-const MAIN_SCENE := "res://scenes/main.tscn"
 
 const REQUIRED_METHODS: Array[String] = [
 	"switch_camera", "leave_camera", "send_hint", "set_indicator", "open_door",
@@ -39,7 +38,7 @@ var _events: Array = []
 func _initialize() -> void:
 	_check("存在 scenes/game_root.tscn", ResourceLoader.exists(SCENE_PATH))
 	_check("存在 scripts/game_root.gd", ResourceLoader.exists(SCRIPT_PATH))
-	_check("主入口 scenes/main.tscn 装配 GameRoot", _main_scene_has_game_root())
+	_check("scenes/game_root.tscn 是 GameRoot 场景", _scene_has_game_root())
 
 
 func _process(_delta: float) -> bool:
@@ -262,21 +261,19 @@ func _test_state() -> void:
 # --- 主入口链路 ---------------------------------------------------------------
 
 func _test_main_entry() -> void:
-	# 结构断言之外，把 main.tscn 真正入树跑一次 _ready，确认入口链路可用。
-	var packed := ResourceLoader.load(MAIN_SCENE) as PackedScene
-	_check("主入口 PackedScene 可加载", packed != null)
+	# main.tscn 已改为新的房间 demo；这里直接验 game_root.tscn 的入口链路仍然可用。
+	var packed := ResourceLoader.load(SCENE_PATH) as PackedScene
+	_check("GameRoot PackedScene 可加载", packed != null)
 	if packed == null:
 		return
 	var instance := packed.instantiate()
-	var entry_root := instance.get_node_or_null("GameRoot")
-	_check("主入口含 GameRoot 子节点", entry_root != null)
-	if entry_root == null:
-		instance.free()
+	_check("GameRoot 根节点挂 game_root.gd", _script_path(instance) == SCRIPT_PATH)
+	if instance == null:
 		return
-	entry_root.auto_tick = false
+	instance.auto_tick = false
 	root.add_child(instance)
-	_check("主入口 GameRoot 入树后装配系统", entry_root.get_camera_session() != null)
-	_check("主入口 GameRoot 可切摄像头", entry_root.switch_camera("C1"))
+	_check("GameRoot 入树后装配系统", instance.get_camera_session() != null)
+	_check("GameRoot 可切摄像头", instance.switch_camera("C1"))
 	instance.queue_free()
 
 
@@ -310,17 +307,16 @@ func _report() -> void:
 		quit(1)
 
 
-func _main_scene_has_game_root() -> bool:
-	if not ResourceLoader.exists(MAIN_SCENE):
+func _scene_has_game_root() -> bool:
+	if not ResourceLoader.exists(SCENE_PATH):
 		return false
-	var packed := ResourceLoader.load(MAIN_SCENE) as PackedScene
+	var packed := ResourceLoader.load(SCENE_PATH) as PackedScene
 	if packed == null:
 		return false
 	var instance := packed.instantiate()
 	if instance == null:
 		return false
-	var game_root := instance.get_node_or_null("GameRoot")
-	var ok := game_root != null and _script_path(game_root) == SCRIPT_PATH
+	var ok := _script_path(instance) == SCRIPT_PATH
 	instance.free()
 	return ok
 

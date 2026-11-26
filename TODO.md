@@ -41,6 +41,9 @@
   验收 `tests/test_demo_goal_chain.gd`（36 条）+ `tests/test_game_root_autotick.gd`（12 条真实帧）
 - [x] 2D 状态图编辑器（`scenes/state_graph_editor.tscn`：状态 / 切换 / 结局可拖拽编辑，数据落
   `resources/data/state_graph.json`，用法见 `docs/STATE_GRAPH_EDITOR.md`）
+- [x] 主场景 3D 控制室 demo（`scenes/main.tscn`：第一人称 + 椅子/监控台/滚动屏、两个房间
+  4 路摄像头、两个性格 NPC、激光/截图引导、照片组合开门；见 `docs/ROOM_DEMO.md`）
+- [ ] 把主场景里的 primitive avatar / NPC / 摄像头 / 家具换成正式模型
 - [ ] 玩法闭环的「内容化」：把 demo 纵向切片换成正式设计
   - 空间拾取（靠近物品再拾取；当前 `E` 是全局拾取）、按剧情拆分多条线索
   - 关卡目标与失败条件按剧情重设计（W5 敌人/闪光已接；W7 潜行、W5 盲区未接）
