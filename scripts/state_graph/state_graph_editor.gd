@@ -69,6 +69,10 @@ func _ready() -> void:
 	canvas.node_picked.connect(_on_node_picked)
 	canvas.error_message.connect(_on_canvas_error)
 	canvas.status_message.connect(func(message: String): set_status(message))
+	canvas.positions_changed.connect(func():
+		_dirty = true
+		_refresh_title()
+	)
 	palette.setup(self)
 	outcome_panel.setup(self)
 

@@ -11,6 +11,7 @@ extends GraphEdit
 signal node_picked(node_id: String, additive: bool)
 signal error_message(message: String)
 signal status_message(message: String)
+signal positions_changed
 
 
 ## 状态节点标题栏右侧的小拖手：把「画布上的节点」直接拖进右侧结局面板。
@@ -455,6 +456,16 @@ func _on_end_node_move() -> void:
 func sync_positions() -> void:
 	if model == null:
 		return
+	var changed := false
 	for child in get_children():
 		if child is GraphNode:
-			model.move_node(String(child.name), child.position_offset, false)
+			var node_id := String(child.name)
+			var node: Dictionary = model.find_node(node_id)
+			if node.is_empty():
+				continue
+			var old_pos: Vector2 = node.get("pos", Vector2.ZERO)
+			if old_pos != child.position_offset:
+				model.move_node(node_id, child.position_offset, false)
+				changed = true
+	if changed:
+		positions_changed.emit()
