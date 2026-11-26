@@ -16,7 +16,12 @@ const PLAYER_SCRIPT := preload("res://scripts/room_demo/room_player.gd")
 const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
+const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const CAMERA_SESSION_SCRIPT := preload("res://scripts/camera/camera_session.gd")
+
+const SOYO_GLB := "res://external-assets/generated/soyo.glb"
+const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
+const FONTAINE_GLB := "res://external-assets/generated/fontaine.glb"
 
 const CHAIR_POS := Vector3(0, 0, 1.5)
 const STAND_POS := Vector3(0, 0, 2.6)
@@ -793,6 +798,9 @@ func _build_player() -> void:
 	player.configure(CHAIR_POS, STAND_POS, SCREEN_POS, DOOR_POS)
 	player.seat_changed.connect(_on_seat_changed)
 	player.interaction.connect(_on_interaction)
+	var lumine := AVATAR_LOADER.load_avatar(LUMINE_GLB, 1.60, 180.0)
+	if lumine != null:
+		player.attach_avatar(lumine)
 
 
 func _build_npcs() -> void:
@@ -806,12 +814,19 @@ func _build_npcs() -> void:
 	reckless.configure("reckless", "reckless", Vector3(-6, 0, -19), waypoints)
 	_world.add_child(reckless)
 	reckless.clue_collected.connect(_on_clue_collected)
+	var soyo := AVATAR_LOADER.load_avatar(SOYO_GLB, 1.72, 180.0)
+	if soyo != null:
+		reckless.attach_avatar(soyo)
 	npcs.append(reckless)
 	var cautious = NPC_SCRIPT.new()
 	cautious.name = "NpcCautious"
 	cautious.configure("cautious", "cautious", Vector3(6, 0, -19), waypoints)
 	_world.add_child(cautious)
 	cautious.clue_collected.connect(_on_clue_collected)
+	# 枫丹 zip 目前只有材质预设、没有 mesh；如果以后放入 fontaine.glb，这里会自动接管。
+	var fontaine := AVATAR_LOADER.load_avatar(FONTAINE_GLB, 1.72, 180.0)
+	if fontaine != null:
+		cautious.attach_avatar(fontaine)
 	npcs.append(cautious)
 
 

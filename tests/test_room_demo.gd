@@ -11,6 +11,10 @@ const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
 const PLAYER_SCRIPT := "res://scripts/room_demo/room_player.gd"
 const DEMO_SCRIPT := "res://scripts/room_demo/room_demo.gd"
 const UI_SCRIPT := "res://scripts/room_demo/room_ui.gd"
+const AVATAR_LOADER := "res://scripts/room_demo/avatar_loader.gd"
+const TOON_SHADER := "res://shaders/anime_toon.gdshader"
+const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
+const SOYO_GLB := "res://external-assets/generated/soyo.glb"
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -23,6 +27,8 @@ func _initialize() -> void:
 	_check("玩家脚本存在", ResourceLoader.exists(PLAYER_SCRIPT))
 	_check("主控制器脚本存在", ResourceLoader.exists(DEMO_SCRIPT))
 	_check("监控 UI 脚本存在", ResourceLoader.exists(UI_SCRIPT))
+	_check("avatar 加载器存在", ResourceLoader.exists(AVATAR_LOADER))
+	_check("二次元 toon shader 存在", ResourceLoader.exists(TOON_SHADER))
 	_check("main.tscn 存在", ResourceLoader.exists(MAIN_SCENE))
 
 
@@ -137,6 +143,15 @@ func _run_scene_tests() -> void:
 	_check("场景有 3D 滚动屏 SubViewport", demo.scroll_viewport != null)
 	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
 	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
+	var loader = load(AVATAR_LOADER)
+	_check("模型文件缺失时 avatar loader 安全返回 null",
+		loader.load_avatar("res://external-assets/generated/missing.glb") == null)
+	if FileAccess.file_exists(LUMINE_GLB):
+		_check("玩家成功挂上 Lumine avatar", demo.player.has_avatar())
+	if FileAccess.file_exists(SOYO_GLB):
+		_check("莽撞 NPC 成功挂上 Soyo avatar", demo.npcs[0].has_avatar())
+	if FileAccess.file_exists("res://external-assets/generated/fontaine.glb"):
+		_check("谨慎 NPC 成功挂上枫丹 avatar", demo.npcs[1].has_avatar())
 
 	_check("初始未坐下", not demo.player.seated)
 	demo.set_seated(true)

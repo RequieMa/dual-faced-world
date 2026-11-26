@@ -22,6 +22,9 @@ var stand_position := Vector3(0, 0, 2.9)
 var camera: Camera3D = null
 
 var _head: Node3D = null
+var _body_mesh: MeshInstance3D = null
+var _head_mesh: MeshInstance3D = null
+var _avatar: Node3D = null
 var _yaw := 0.0
 var _pitch := 0.0
 var _can_sit := false
@@ -40,6 +43,22 @@ func configure(chair: Vector3, stand: Vector3, screen: Vector3, door: Vector3) -
 	door_position = door
 
 
+## 替换 primitive avatar；第一人称相机在 1.66m，模型按 1.60m 归一化，避免相机埋进头里。
+func attach_avatar(avatar: Node3D) -> void:
+	if avatar == null:
+		return
+	_avatar = avatar
+	add_child(avatar)
+	if _body_mesh != null:
+		_body_mesh.visible = false
+	if _head_mesh != null:
+		_head_mesh.visible = false
+
+
+func has_avatar() -> bool:
+	return _avatar != null
+
+
 func _build_body() -> void:
 	var shape := CollisionShape3D.new()
 	var capsule_shape := CapsuleShape3D.new()
@@ -49,23 +68,23 @@ func _build_body() -> void:
 	shape.position.y = 0.9
 	add_child(shape)
 
-	var body_mesh := MeshInstance3D.new()
+	_body_mesh = MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
 	capsule.radius = 0.32
 	capsule.height = 1.45
-	body_mesh.mesh = capsule
-	body_mesh.position.y = 0.88
-	body_mesh.material_override = _material(Color(0.72, 0.74, 0.8))
-	add_child(body_mesh)
+	_body_mesh.mesh = capsule
+	_body_mesh.position.y = 0.88
+	_body_mesh.material_override = _material(Color(0.72, 0.74, 0.8))
+	add_child(_body_mesh)
 
-	var head_mesh := MeshInstance3D.new()
+	_head_mesh = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.22
 	sphere.height = 0.44
-	head_mesh.mesh = sphere
-	head_mesh.position.y = 1.55
-	head_mesh.material_override = _material(Color(0.86, 0.72, 0.62))
-	add_child(head_mesh)
+	_head_mesh.mesh = sphere
+	_head_mesh.position.y = 1.55
+	_head_mesh.material_override = _material(Color(0.86, 0.72, 0.62))
+	add_child(_head_mesh)
 
 	_head = Node3D.new()
 	_head.name = "Head"

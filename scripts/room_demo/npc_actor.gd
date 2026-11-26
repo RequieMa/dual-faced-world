@@ -40,6 +40,9 @@ var _signal_active := false
 var _seeking_clue_id := ""
 var _visual_built := false
 var _cone: MeshInstance3D = null
+var _body_mesh: MeshInstance3D = null
+var _head_mesh: MeshInstance3D = null
+var _avatar: Node3D = null
 
 
 func configure(id: String, personality_name: String, start_pos: Vector3,
@@ -279,23 +282,23 @@ func _ensure_visual() -> void:
 	_visual_built = true
 	var body_color := Color(0.9, 0.45, 0.2) if personality == PERSONALITY_RECKLESS \
 		else Color(0.25, 0.65, 0.9)
-	var body := MeshInstance3D.new()
+	_body_mesh = MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
 	capsule.radius = 0.35
 	capsule.height = 1.4
-	body.mesh = capsule
-	body.position.y = 0.9
-	body.material_override = _material(body_color)
-	add_child(body)
+	_body_mesh.mesh = capsule
+	_body_mesh.position.y = 0.9
+	_body_mesh.material_override = _material(body_color)
+	add_child(_body_mesh)
 
-	var head := MeshInstance3D.new()
+	_head_mesh = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.28
 	sphere.height = 0.56
-	head.mesh = sphere
-	head.position.y = 1.72
-	head.material_override = _material(body_color.lightened(0.2))
-	add_child(head)
+	_head_mesh.mesh = sphere
+	_head_mesh.position.y = 1.72
+	_head_mesh.material_override = _material(body_color.lightened(0.2))
+	add_child(_head_mesh)
 
 	var label := Label3D.new()
 	label.text = "%s（%s）" % [npc_id, "莽撞" if personality == PERSONALITY_RECKLESS else "谨慎"]
@@ -323,6 +326,22 @@ func _update_cone_visual() -> void:
 	if _cone == null:
 		return
 	_cone.visible = true
+
+
+## 替换 primitive avatar（GLB 模型由 room_demo 加载）；视锥和名字标签保留。
+func attach_avatar(avatar: Node3D) -> void:
+	if avatar == null:
+		return
+	_avatar = avatar
+	add_child(avatar)
+	if _body_mesh != null:
+		_body_mesh.visible = false
+	if _head_mesh != null:
+		_head_mesh.visible = false
+
+
+func has_avatar() -> bool:
+	return _avatar != null
 
 
 func _material(color: Color) -> StandardMaterial3D:
