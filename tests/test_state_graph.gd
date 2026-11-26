@@ -75,8 +75,8 @@ func _run_model_tests() -> void:
 		_check("结局不能当切换端点", model.add_edge(clue_first, "caught", "") == "")
 
 	# 判定：两个节点两种状态 → 一个结局
-	var matched: Array = model.evaluate(["clue_none", "clue_has"])
-	_check("evaluate 接受不存在的节点 id 不崩", matched is Array)
+	var matched: Array = model.evaluate(["no_such_a", "no_such_b"])
+	_check("evaluate 忽略不存在的节点 id", matched.is_empty(), str(matched))
 	var win_pair := _find_pair_nodes(model)
 	_check("默认图里能找到「敌人·巡逻」与「朋友·跟随」这类组合", not win_pair.is_empty(), str(win_pair))
 	if win_pair.size() == 2:
@@ -136,7 +136,8 @@ func _run_model_tests() -> void:
 	var before_edges: int = model.edges.size()
 	model.remove_node(enemy_watch)
 	_check("删除节点后查不到", not model.has_node(enemy_watch))
-	_check("删除节点不波及其它节点的连线计数", model.edges.size() <= before_edges)
+	_check("删除节点不波及其它节点的连线计数", model.edges.size() == before_edges,
+		"%d vs %d" % [model.edges.size(), before_edges])
 	var dangling := 0
 	for edge in model.edges:
 		if not (model.has_node(String(edge["from"])) and model.has_node(String(edge["to"]))):
@@ -152,7 +153,8 @@ func _run_model_tests() -> void:
 	var triple_hits: Array = model.evaluate(triple)
 	_check("三条件结局能被判定命中", _outcome_ids(triple_hits).has(rule_id), str(_outcome_ids(triple_hits)))
 	_check("条件多的结局排在前面",
-		not triple_hits.is_empty() and int((triple_hits[0] as Dictionary).get("nodes", []).size()) >= 2)
+		not triple_hits.is_empty() and String((triple_hits[0] as Dictionary).get("id", "")) == rule_id,
+		str(_outcome_ids(triple_hits)))
 	_check("删除结局规则", model.remove_outcome(rule_id))
 
 	# 存取：条件也要完整落盘

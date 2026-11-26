@@ -401,13 +401,15 @@ func _refresh_edge_options() -> void:
 		_edge_from.set_item_metadata(_edge_from.item_count - 1, String(node["id"]))
 		_edge_to.add_item(label)
 		_edge_to.set_item_metadata(_edge_to.item_count - 1, String(node["id"]))
-	if _edge_from.item_count == 0:
+	var from_count := _edge_from.item_count
+	var to_count := _edge_to.item_count
+	if from_count == 0:
 		_edge_from.add_item("（还没有状态节点）")
-	if _edge_to.item_count == 0:
+	if to_count == 0:
 		_edge_to.add_item("（还没有状态节点）")
 	_select_metadata(_edge_from, keep_from)
 	_select_metadata(_edge_to, keep_to)
-	_add_edge_button.disabled = _edge_from.item_count < 1 or _edge_to.item_count < 1
+	_add_edge_button.disabled = from_count == 0 or to_count == 0
 
 
 func _selected_metadata(option: OptionButton) -> String:
