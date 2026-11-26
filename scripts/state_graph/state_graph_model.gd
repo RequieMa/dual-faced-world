@@ -82,7 +82,7 @@ func add_outcome(condition_ids: Array, label: String, tone: String = TONE_NEUTRA
 		if not requires.has(node_id):
 			requires.append(node_id)
 	var node := {
-		"id": _make_id("outcome_" + clean_label),
+		"id": _make_id("outcome"),
 		"kind": KIND_OUTCOME,
 		"entity": "",
 		"state": "",
@@ -180,15 +180,18 @@ func remove_node(node_id: String) -> bool:
 	return true
 
 
-func move_node(node_id: String, pos: Vector2) -> bool:
+## 拖动节点时由画布高频调用；通知可以关掉，避免每帧重建整张图。
+func move_node(node_id: String, pos: Vector2, notify: bool = true) -> bool:
 	var node := find_node(node_id)
 	if node.is_empty():
 		return false
 	node["pos"] = pos
-	changed.emit()
+	if notify:
+		changed.emit()
 	return true
 
 
+## 只改「实体/状态」，结局节点请走 set_outcome_label。
 func set_node_label(node_id: String, entity: String, state: String) -> bool:
 	var node := find_node(node_id)
 	if node.is_empty() or not _is_state(node):
@@ -283,17 +286,95 @@ func evaluate(active: Array) -> Array[Dictionary]:
 				matched = false
 				break
 		if matched:
-			hits.append(node.duplicate(true))
+			# `requires` 是模型内部字段；`nodes` 是给 UI/测试用的同义列表（触发结局的状态节点 id）。
+			var hit: Dictionary = node.duplicate(true)
+			hit["nodes"] = (requires as Array).duplicate()
+			hits.append(hit)
 	hits.sort_custom(func(a, b): return (a["requires"] as Array).size() > (b["requires"] as Array).size())
 	return hits
 
 
-func outcomes() -> Array[Dictionary]:
-	var result: Array[Dictionary] = []
-	for node in nodes:
-		if _node_kind_of(node) == KIND_OUTCOME:
-			result.append(node)
-	return result
+## 所有结局节点（按图里的顺序）。只读属性，方便 UI 与测试直接取。
+var outcomes: Array[Dictionary]:
+	get:
+		var result: Array[Dictionary] = []
+		for node in nodes:
+			if _node_kind_of(node) == KIND_OUTCOME:
+				result.append(node)
+		return result
+
+
+## 删掉一个结局节点；只认结局节点（状态节点请走 remove_node）。
+func remove_outcome(outcome_id: String) -> bool:
+	if _node_kind(outcome_id) != KIND_OUTCOME:
+		return false
+	return remove_node(outcome_id)
+
+
+## 给已存在的结局追加一个触发条件（状态节点）。
+func add_requirement(outcome_id: String, state_id: String) -> bool:
+	var outcome := find_node(outcome_id)
+	if outcome.is_empty() or _node_kind_of(outcome) != KIND_OUTCOME:
+		return false
+	if _node_kind(state_id) != KIND_STATE:
+		_report("结局条件只能是状态节点")
+		return false
+	var requires: Array = outcome.get("requires", [])
+	if requires.has(state_id):
+		return false
+	requires.append(state_id)
+	outcome["requires"] = requires
+	changed.emit()
+	return true
+
+
+## 从结局移除一个触发条件；条件删空后结局也一起删掉（无条件结局永远不会命中）。
+func remove_requirement(outcome_id: String, state_id: String) -> bool:
+	var outcome := find_node(outcome_id)
+	if outcome.is_empty() or _node_kind_of(outcome) != KIND_OUTCOME:
+		return false
+	var requires: Array = outcome.get("requires", [])
+	if not requires.has(state_id):
+		return false
+	var kept: Array = []
+	for raw in requires:
+		if String(raw) != state_id:
+			kept.append(String(raw))
+	outcome["requires"] = kept
+	if kept.is_empty():
+		return remove_node(outcome_id)
+	changed.emit()
+	return true
+
+
+func set_outcome_label(outcome_id: String, label: String) -> bool:
+	var outcome := find_node(outcome_id)
+	if outcome.is_empty() or _node_kind_of(outcome) != KIND_OUTCOME:
+		return false
+	var clean := label.strip_edges()
+	if clean.is_empty():
+		_report("结局名称不能为空")
+		return false
+	outcome["label"] = clean
+	changed.emit()
+	return true
+
+
+func set_outcome_tone(outcome_id: String, tone: String) -> bool:
+	var outcome := find_node(outcome_id)
+	if outcome.is_empty() or _node_kind_of(outcome) != KIND_OUTCOME:
+		return false
+	if not TONES.has(tone):
+		_report("未知结局色调：%s" % tone)
+		return false
+	outcome["tone"] = tone
+	changed.emit()
+	return true
+
+
+## 节点的类型（"state" / "outcome" / ""），给画布/编辑器判断用。
+func node_kind(node_id: String) -> String:
+	return _node_kind(node_id)
 
 
 # --- 序列化 -------------------------------------------------------------------
@@ -399,14 +480,18 @@ func from_dict(data: Variant) -> bool:
 			"label": String(dict.get("label", "")),
 		})
 
-	# 结局的 requires 只保留存在的状态节点。
+	# 结局的 requires 只保留存在的状态节点（不允许引用结局、也不允许重复）。
+	var kinds := {}
+	for node in parsed_nodes:
+		kinds[String(node["id"])] = _node_kind_of(node)
 	for node in parsed_nodes:
 		if _node_kind_of(node) != KIND_OUTCOME:
 			continue
 		var kept: Array = []
 		for raw in node["requires"]:
-			if seen.has(String(raw)):
-				kept.append(String(raw))
+			var ref_id := String(raw)
+			if kinds.get(ref_id, "") == KIND_STATE and not kept.has(ref_id):
+				kept.append(ref_id)
 		node["requires"] = kept
 
 	nodes = parsed_nodes

@@ -1,0 +1,260 @@
+{
+	"version": 1,
+	"nodes": [
+		{
+			"id": "round_playing",
+			"kind": "state",
+			"entity": "回合",
+			"state": "进行中",
+			"label": "回合 · 进行中",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [40, 40]
+		},
+		{
+			"id": "round_roundwin",
+			"kind": "state",
+			"entity": "回合",
+			"state": "本轮成功",
+			"label": "回合 · 本轮成功",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [40, 180]
+		},
+		{
+			"id": "round_won",
+			"kind": "state",
+			"entity": "回合",
+			"state": "已通关",
+			"label": "回合 · 已通关",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [40, 320]
+		},
+		{
+			"id": "round_lost",
+			"kind": "state",
+			"entity": "回合",
+			"state": "已失败",
+			"label": "回合 · 已失败",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [40, 460]
+		},
+		{
+			"id": "clue_none",
+			"kind": "state",
+			"entity": "线索",
+			"state": "未拾取",
+			"label": "线索 · 未拾取",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [320, 40]
+		},
+		{
+			"id": "clue_has",
+			"kind": "state",
+			"entity": "线索",
+			"state": "已拾取",
+			"label": "线索 · 已拾取",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [320, 180]
+		},
+		{
+			"id": "door_locked",
+			"kind": "state",
+			"entity": "门",
+			"state": "锁着",
+			"label": "门 · 锁着",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [600, 40]
+		},
+		{
+			"id": "door_open",
+			"kind": "state",
+			"entity": "门",
+			"state": "打开",
+			"label": "门 · 打开",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [600, 180]
+		},
+		{
+			"id": "friend_idle",
+			"kind": "state",
+			"entity": "朋友",
+			"state": "待命",
+			"label": "朋友 · 待命",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [880, 40]
+		},
+		{
+			"id": "friend_follow",
+			"kind": "state",
+			"entity": "朋友",
+			"state": "跟随",
+			"label": "朋友 · 跟随",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [880, 180]
+		},
+		{
+			"id": "friend_wait",
+			"kind": "state",
+			"entity": "朋友",
+			"state": "等待",
+			"label": "朋友 · 等待",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [880, 320]
+		},
+		{
+			"id": "friend_open",
+			"kind": "state",
+			"entity": "朋友",
+			"state": "去开门",
+			"label": "朋友 · 去开门",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [880, 460]
+		},
+		{
+			"id": "friend_door",
+			"kind": "state",
+			"entity": "朋友",
+			"state": "到门口",
+			"label": "朋友 · 到门口",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [880, 600]
+		},
+		{
+			"id": "enemy_patrol",
+			"kind": "state",
+			"entity": "敌人",
+			"state": "巡逻",
+			"label": "敌人 · 巡逻",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1160, 40]
+		},
+		{
+			"id": "enemy_spot",
+			"kind": "state",
+			"entity": "敌人",
+			"state": "发现",
+			"label": "敌人 · 发现",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1160, 180]
+		},
+		{
+			"id": "enemy_blind",
+			"kind": "state",
+			"entity": "敌人",
+			"state": "被闪光致盲",
+			"label": "敌人 · 被闪光致盲",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1160, 320]
+		},
+		{
+			"id": "cam_idle",
+			"kind": "state",
+			"entity": "摄像头",
+			"state": "待机",
+			"label": "摄像头 · 待机",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1440, 40]
+		},
+		{
+			"id": "cam_dwell",
+			"kind": "state",
+			"entity": "摄像头",
+			"state": "停留",
+			"label": "摄像头 · 停留",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1440, 180]
+		},
+		{
+			"id": "cam_burn",
+			"kind": "state",
+			"entity": "摄像头",
+			"state": "过载烧毁",
+			"label": "摄像头 · 过载烧毁",
+			"tone": "neutral",
+			"requires": [],
+			"pos": [1440, 320]
+		},
+		{
+			"id": "caught",
+			"kind": "outcome",
+			"entity": "",
+			"state": "",
+			"label": "被抓",
+			"tone": "fail",
+			"requires": ["enemy_patrol", "friend_follow"],
+			"pos": [1720, 40]
+		},
+		{
+			"id": "round_win",
+			"kind": "outcome",
+			"entity": "",
+			"state": "",
+			"label": "本轮成功",
+			"tone": "win",
+			"requires": ["friend_door", "door_open"],
+			"pos": [1720, 180]
+		},
+		{
+			"id": "escape",
+			"kind": "outcome",
+			"entity": "",
+			"state": "",
+			"label": "成功逃脱",
+			"tone": "win",
+			"requires": ["enemy_patrol", "cam_burn"],
+			"pos": [1720, 320]
+		},
+		{
+			"id": "perfect_escape",
+			"kind": "outcome",
+			"entity": "",
+			"state": "",
+			"label": "完美逃脱",
+			"tone": "win",
+			"requires": ["enemy_patrol", "cam_burn", "friend_door"],
+			"pos": [1720, 460]
+		}
+	],
+	"edges": [
+		{"id": "e_round_win", "from": "round_playing", "to": "round_roundwin", "label": "朋友到门口 且 门已开"},
+		{"id": "e_round_next", "from": "round_roundwin", "to": "round_playing", "label": "还有下一轮"},
+		{"id": "e_round_won", "from": "round_roundwin", "to": "round_won", "label": "第 3 轮也成功"},
+		{"id": "e_round_lost", "from": "round_playing", "to": "round_lost", "label": "倒计时归零 / 被发现"},
+		{"id": "e_round_retry", "from": "round_lost", "to": "round_playing", "label": "R 重试本轮"},
+		{"id": "e_round_replay", "from": "round_won", "to": "round_playing", "label": "R 重玩"},
+		{"id": "e_clue_pick", "from": "clue_none", "to": "clue_has", "label": "E 拾取磁带"},
+		{"id": "e_door_open", "from": "door_locked", "to": "door_open", "label": "H 开门 / O 走到终点"},
+		{"id": "e_door_reset", "from": "door_open", "to": "door_locked", "label": "每轮重开复位"},
+		{"id": "e_friend_follow", "from": "friend_idle", "to": "friend_follow", "label": "F 跟我来"},
+		{"id": "e_friend_wait", "from": "friend_follow", "to": "friend_wait", "label": "G 站住"},
+		{"id": "e_friend_resume", "from": "friend_wait", "to": "friend_follow", "label": "F 继续"},
+		{"id": "e_friend_open", "from": "friend_idle", "to": "friend_open", "label": "O 自己开门"},
+		{"id": "e_friend_door", "from": "friend_follow", "to": "friend_door", "label": "沿路线走到门口"},
+		{"id": "e_friend_open_door", "from": "friend_open", "to": "friend_door", "label": "走到终点"},
+		{"id": "e_enemy_spot", "from": "enemy_patrol", "to": "enemy_spot", "label": "朋友移动进入视锥"},
+		{"id": "e_enemy_calm", "from": "enemy_spot", "to": "enemy_patrol", "label": "朋友停下 / 离开视锥"},
+		{"id": "e_enemy_blind", "from": "enemy_patrol", "to": "enemy_blind", "label": "摄像头过载闪光"},
+		{"id": "e_enemy_recover", "from": "enemy_blind", "to": "enemy_patrol", "label": "8 秒后恢复"},
+		{"id": "e_cam_dwell", "from": "cam_idle", "to": "cam_dwell", "label": "按 1–4 进入机位"},
+		{"id": "e_cam_leave", "from": "cam_dwell", "to": "cam_idle", "label": "按 0 离开"},
+		{"id": "e_cam_burn", "from": "cam_dwell", "to": "cam_burn", "label": "停留计时走完"},
+		{"id": "e_cam_flash", "from": "cam_burn", "to": "enemy_blind", "label": "8 秒 / 半径 9m 闪光"}
+	]
+}

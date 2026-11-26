@@ -6,6 +6,10 @@ Mermaid 在 GitHub 网页和 VS Code Markdown 预览里都会直接渲染，改�
 
 本篇只描述**现状**（`develop` @ `3eef9f8`）。权威来源仍然是代码：
 
+> 想直接看/改这张图：打开 `scenes/state_graph_editor.tscn`（2D 状态图编辑器），
+> 状态、切换、结局都在里面可拖拽编辑，保存回 `resources/data/state_graph.json`。
+> 用法见 [STATE_GRAPH_EDITOR.md](STATE_GRAPH_EDITOR.md)。
+
 | 主题 | 权威文件 |
 |---|---|
 | demo 状态机 / 计分 / 目标判定 | `scripts/game_root.gd`（`DEMO_*` 常量、`_update_demo`、`_begin_demo_round`） |
