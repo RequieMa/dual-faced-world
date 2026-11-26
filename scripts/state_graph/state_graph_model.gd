@@ -81,6 +81,9 @@ func add_outcome(condition_ids: Array, label: String, tone: String = TONE_NEUTRA
 			return ""
 		if not requires.has(node_id):
 			requires.append(node_id)
+	if requires.is_empty():
+		_report("结局至少需要一个状态条件")
+		return ""
 	var node := {
 		"id": _make_id("outcome"),
 		"kind": KIND_OUTCOME,
@@ -209,13 +212,19 @@ func set_node_label(node_id: String, entity: String, state: String) -> bool:
 
 # --- 边 -----------------------------------------------------------------------
 
-## 状态切换。两端必须已存在、不能自环；同一对两端允许重复（画图时会并成一条）。
+## 状态切换。两端都必须是已存在的状态节点，不能自环；同一对两端只保留一条。
 func add_edge(from_id: String, to_id: String, label: String = "") -> String:
 	if from_id == to_id:
 		_report("不能把节点连到自己")
 		return ""
 	if not has_node(from_id) or not has_node(to_id):
 		_report("连线的两端必须都存在")
+		return ""
+	if _node_kind(from_id) != KIND_STATE or _node_kind(to_id) != KIND_STATE:
+		_report("切换连线的两端都必须是状态节点")
+		return ""
+	if not find_edge_between(from_id, to_id).is_empty():
+		_report("这两个状态之间已经有切换了")
 		return ""
 	var edge := {
 		"id": _make_id("edge"),
@@ -460,7 +469,12 @@ func from_dict(data: Variant) -> bool:
 		_report("状态图没有任何有效节点")
 		return false
 
+	var kinds := {}
+	for node in parsed_nodes:
+		kinds[String(node["id"])] = _node_kind_of(node)
+
 	var parsed_edges: Array[Dictionary] = []
+	var seen_pairs := {}
 	for entry in (raw_edges as Array):
 		if not entry is Dictionary:
 			continue
@@ -472,6 +486,14 @@ func from_dict(data: Variant) -> bool:
 			continue
 		if from_id == to_id:
 			continue
+		if kinds.get(from_id, "") != KIND_STATE or kinds.get(to_id, "") != KIND_STATE:
+			_report("连线端点不是状态节点，已跳过：%s -> %s" % [from_id, to_id])
+			continue
+		var pair_key := from_id + ">" + to_id
+		if seen_pairs.has(pair_key):
+			_report("重复连线已合并：%s -> %s" % [from_id, to_id])
+			continue
+		seen_pairs[pair_key] = true
 		parsed_edges.append({
 			"id": String(dict.get("id", "")).strip_edges() if not String(dict.get("id", "")).is_empty()
 				else "edge_%d" % (parsed_edges.size() + 1),
@@ -480,12 +502,12 @@ func from_dict(data: Variant) -> bool:
 			"label": String(dict.get("label", "")),
 		})
 
-	# 结局的 requires 只保留存在的状态节点（不允许引用结局、也不允许重复）。
-	var kinds := {}
-	for node in parsed_nodes:
-		kinds[String(node["id"])] = _node_kind_of(node)
+	# 结局的 requires 只保留存在的状态节点（不允许引用结局、也不允许重复）；
+	# 条件删空的结局没有意义，直接丢弃。
+	var final_nodes: Array[Dictionary] = []
 	for node in parsed_nodes:
 		if _node_kind_of(node) != KIND_OUTCOME:
+			final_nodes.append(node)
 			continue
 		var kept: Array = []
 		for raw in node["requires"]:
@@ -493,8 +515,15 @@ func from_dict(data: Variant) -> bool:
 			if kinds.get(ref_id, "") == KIND_STATE and not kept.has(ref_id):
 				kept.append(ref_id)
 		node["requires"] = kept
+		if kept.is_empty():
+			_report("结局没有条件，已跳过：%s" % String(node["id"]))
+			continue
+		final_nodes.append(node)
+	if final_nodes.is_empty():
+		_report("状态图没有任何有效节点")
+		return false
 
-	nodes = parsed_nodes
+	nodes = final_nodes
 	edges = parsed_edges
 	_seq = nodes.size() + edges.size() + 1
 	changed.emit()

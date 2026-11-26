@@ -63,11 +63,15 @@ func _run_model_tests() -> void:
 	if not clue_nodes.is_empty():
 		var clue_first := String((clue_nodes[0] as Dictionary)["id"])
 		var clue_last := String((clue_nodes[-1] as Dictionary)["id"])
-		var edge_id: String = model.add_edge(clue_first, clue_last, "E 拾取")
-		_check("连线成功", not edge_id.is_empty())
-		_check("连线记录触发词", String(model.find_edge(edge_id).get("label", "")) == "E 拾取")
+		# 默认图里 clue_first -> clue_last 已经有边，这里反过来建一条验证新增。
+		var edge_id: String = model.add_edge(clue_last, clue_first, "倒带回未拾取")
+		_check("连线成功", not edge_id.is_empty(), str(model.last_errors))
+		_check("连线记录触发词",
+			String(model.find_edge(edge_id).get("label", "")) == "倒带回未拾取")
+		_check("重复切换被拒", model.add_edge(clue_last, clue_first, "重复") == "")
 		_check("未知端点被拒", model.add_edge(clue_first, "no_such_node", "") == "")
 		_check("自环被拒", model.add_edge(clue_first, clue_first, "") == "")
+		_check("结局不能当切换端点", model.add_edge(clue_first, "caught", "") == "")
 
 	# 判定：两个节点两种状态 → 一个结局
 	var matched: Array = model.evaluate(["clue_none", "clue_has"])
@@ -96,6 +100,7 @@ func _run_model_tests() -> void:
 		int((_find_outcome(escape_hits, "escape").get("nodes", []) as Array).size()) == 2)
 
 	# 结局条件 API：追加 / 去重 / 移除 / 条件删空自动删结局
+	_check("空条件结局被拒", model.add_outcome([], "空结局", "neutral") == "")
 	var req_outcome: String = model.add_outcome([enemy_patrol], "临时单条件", "neutral")
 	_check("单条件结局可创建", not req_outcome.is_empty())
 	_check("追加第二个条件", model.add_requirement(req_outcome, cam_burn))
@@ -164,6 +169,24 @@ func _run_model_tests() -> void:
 	_check("载入不存在的文件返回 false", not reloaded.load_from("res://no_such_graph.json"))
 	_check("载入失败有 last_errors", not reloaded.last_errors.is_empty())
 	_check("坏数据不炸且被拒", not reloaded.from_dict({"nodes": "not an array"}))
+
+	# 外部数据里的重复连线 / 结局端点连线在载入时过滤掉
+	var dirty: Dictionary = model.to_dict()
+	dirty["edges"].append({"id": "dup", "from": "enemy_patrol", "to": "enemy_blind", "label": "重复"})
+	dirty["edges"].append({"id": "bad", "from": "caught", "to": "enemy_patrol", "label": "结局当端点"})
+	var filtered = load(MODEL_PATH).new()
+	_check("带脏连线的数据能载入", filtered.from_dict(dirty), str(filtered.last_errors))
+	_check("重复/结局端点连线被过滤", filtered.edges.size() == model.edges.size(),
+		"%d vs %d" % [filtered.edges.size(), model.edges.size()])
+	var only_empty := {
+		"nodes": [{
+			"id": "empty_outcome", "kind": "outcome", "entity": "", "state": "",
+			"label": "空结局", "tone": "neutral", "requires": [], "pos": [0, 0],
+		}],
+		"edges": [],
+	}
+	var empty_model = load(MODEL_PATH).new()
+	_check("只有空结局的数据被拒", not empty_model.from_dict(only_empty))
 
 
 # --- 编辑器场景 -----------------------------------------------------------------
