@@ -143,6 +143,18 @@ func _run_scene_tests() -> void:
 	_check("场景有 3D 滚动屏 SubViewport", demo.scroll_viewport != null)
 	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
 	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
+	_check("NPC 使用带碰撞的 CharacterBody3D", demo.npcs[0] is CharacterBody3D
+		and demo.npcs[0].get_node_or_null("NpcCollision") != null)
+	_check("摄像头高度接近天花板", demo.feeds[0]["camera"].global_position.y >= 2.6)
+	_check("摄像头使用广角镜头", demo.feeds[0]["camera"].fov >= 80.0)
+	_check("监控画面启用鱼眼畸变", demo.monitor_ui.uses_fisheye())
+	_check("玩家移动速度已调低", demo.player.WALK_SPEED <= 2.6)
+	var wall_npc = demo.npcs[0]
+	wall_npc.global_position = Vector3(-7.5, 0.0, -18.0)
+	wall_npc.receive_signal(Vector3(-15.0, 0.0, -18.0))
+	wall_npc.tick(2.0, [])
+	_check("NPC 被墙挡住，不会穿墙", wall_npc.global_position.x > -9.0,
+		str(wall_npc.global_position))
 	var loader = load(AVATAR_LOADER)
 	_check("模型文件缺失时 avatar loader 安全返回 null",
 		loader.load_avatar("res://external-assets/generated/missing.glb") == null)

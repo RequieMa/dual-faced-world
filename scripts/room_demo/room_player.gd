@@ -6,7 +6,7 @@ signal seat_changed(seated: bool)
 signal interaction(action: String)
 signal sit_hint_changed(visible: bool)
 
-const WALK_SPEED := 3.4
+const WALK_SPEED := 2.2
 const MOUSE_SENSITIVITY := 0.0025
 const PITCH_MIN := -1.15
 const PITCH_MAX := 0.85

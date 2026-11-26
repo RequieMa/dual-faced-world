@@ -9,6 +9,8 @@ signal feed_clicked(feed_id: String)
 signal close_feed_requested
 signal laser_requested(feed_id: String, normalized_pos: Vector2)
 
+const FISHEYE_SHADER := preload("res://shaders/fisheye_feed.gdshader")
+const FISHEYE_STRENGTH := 0.10
 const COLOR_TEXT := Color(0.86, 0.92, 1.0)
 const COLOR_MUTED := Color(0.58, 0.66, 0.8)
 const COLOR_ACCENT := Color(0.42, 0.82, 1.0)
@@ -26,10 +28,15 @@ var _big_title: Label
 var _dwell_bar: ProgressBar
 var _dwell_label: Label
 var _notice: Label
+var _fisheye_material: ShaderMaterial
 
 
 func setup() -> void:
 	size = Vector2(1280, 800)
+	_fisheye_material = ShaderMaterial.new()
+	_fisheye_material.shader = FISHEYE_SHADER
+	_fisheye_material.set_shader_parameter("strength", FISHEYE_STRENGTH)
+	_fisheye_material.set_shader_parameter("zoom", 1.0)
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.025, 0.04, 0.06, 1.0)
@@ -80,6 +87,7 @@ func setup() -> void:
 	_big_feed.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_big_feed.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_big_feed.mouse_filter = Control.MOUSE_FILTER_STOP
+	_big_feed.material = _fisheye_material
 	_big_feed.gui_input.connect(_on_big_feed_input)
 	_big_box.add_child(_big_feed)
 	var back := _button("返回 4 路画面")
@@ -116,13 +124,17 @@ func refresh_feeds(feeds: Array[Dictionary]) -> void:
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 2)
 		cell.add_child(box)
-		var view := TextureButton.new()
+		# TextureButton 内部会把状态贴图打包成 atlas，CanvasItem shader 的 TEXTURE/UV
+		# 不是整张画面；这里用 TextureRect + gui_input，鱼眼 shader 才能覆盖整张画面。
+		var view := TextureRect.new()
 		view.custom_minimum_size = Vector2(600, 270)
 		view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		view.texture_normal = _feed_texture(feed)
-		view.ignore_texture_size = true
-		view.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-		view.pressed.connect(_on_feed_pressed.bind(feed_id))
+		view.texture = _feed_texture(feed)
+		view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		view.mouse_filter = Control.MOUSE_FILTER_STOP
+		view.material = _fisheye_material
+		view.gui_input.connect(_on_feed_view_input.bind(feed_id))
 		box.add_child(view)
 		var label := _label(feed_id, 17, COLOR_MUTED)
 		box.add_child(label)
@@ -140,7 +152,7 @@ func refresh_feed_states(session) -> void:
 	for feed in _feeds:
 		var feed_id := String(feed.get("id", ""))
 		var label: Label = _feed_labels.get(feed_id)
-		var button: TextureButton = _feed_buttons.get(feed_id)
+		var button: Control = _feed_buttons.get(feed_id)
 		if label == null:
 			continue
 		if burned.has(feed_id):
@@ -194,6 +206,12 @@ func _on_feed_pressed(feed_id: String) -> void:
 	feed_clicked.emit(feed_id)
 
 
+func _on_feed_view_input(event: InputEvent, feed_id: String) -> void:
+	var mouse := event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+		feed_clicked.emit(feed_id)
+
+
 func _on_big_feed_input(event: InputEvent) -> void:
 	var mouse := event as InputEventMouseButton
 	if mouse == null or not mouse.pressed or mouse.button_index != MOUSE_BUTTON_RIGHT:
@@ -201,8 +219,21 @@ func _on_big_feed_input(event: InputEvent) -> void:
 	var size := _big_feed.size
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
-	laser_requested.emit(_selected, _big_feed.get_local_mouse_position() / size)
+	var uv := _big_feed.get_local_mouse_position() / size
+	laser_requested.emit(_selected, _undistort_uv(uv))
 	_big_feed.accept_event()
+
+
+func uses_fisheye() -> bool:
+	return _fisheye_material != null and _fisheye_material.shader == FISHEYE_SHADER
+
+
+## 画面被鱼眼 shader 向外弯过；右键激光需要把点击坐标反变换回原始画面 UV。
+func _undistort_uv(uv: Vector2) -> Vector2:
+	var p := uv * 2.0 - Vector2.ONE
+	var radius_squared := p.length_squared()
+	p /= 1.0 + FISHEYE_STRENGTH * radius_squared
+	return (p * 0.5 + Vector2(0.5, 0.5)).clamp(Vector2.ZERO, Vector2.ONE)
 
 
 func _feed_by_id(feed_id: String) -> Dictionary:

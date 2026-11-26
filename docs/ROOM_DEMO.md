@@ -30,12 +30,15 @@
 ## 3. 内容与数值（Scope 缩小版）
 
 - **房间**：1 个控制室 + 2 个小观察房间（A/B，中间有门洞）；旧剧院地图不参与。
-- **摄像头**：每房间 2 台，面对面摆放，所以画面里能看到对面的摄像头模型。
+- **摄像头**：每房间 2 台，面对面摆放；机位贴墙装在接近天花板的角落（y≈2.7），
+  俯视房间，画面带广角桶形/鱼眼畸变，所以画面里能看到对面的摄像头模型和弯曲的墙线。
 - **停留/过载**：每台停留 **45 秒**（原设定“几分钟”缩成 demo 秒数），超时过载烧毁；
   切走后 **8 秒**冷却。烧毁是本次运行内永久，重开 `R` 才恢复。
-- **NPC**：`reckless`（莽撞）跑得快、视锥较窄，收到激光会冲过去，找不到线索就跑开；
+- **NPC**：`reckless`（莽撞）跑得比谨慎快、视锥较窄，收到激光会冲过去，找不到线索就跑开；
   连续跑空 3 次后会暂时忽略信号。`cautious`（谨慎）走得慢、视锥较宽，会顺着激光过去
   并仔细翻找，不会因为跑空而忽略信号。两人都会在无指令时自己巡逻/四处张望。
+  移动速度已下调（莽撞约 1.65m/s、谨慎约 0.6m/s、玩家约 2.2m/s）；NPC 改用
+  `CharacterBody3D + move_and_slide`，会被墙体和家具挡住，不再穿墙。
 - **线索**：2 个，放在房间角落/家具后面；NPC 只有走到很近且看得到时才会顺手捡，
   大多数情况需要玩家用激光或截图把他们引过去。
 - **拍照**：NPC 捡到线索自动拍照；照片带拍摄时间、机位和缩略图（headless 下用占位纹理）。
@@ -55,6 +58,7 @@
 | NPC 行为/视锥 | `scripts/room_demo/npc_actor.gd` |
 | Avatar 运行时加载 / 归一化 / toon 材质 | `scripts/room_demo/avatar_loader.gd` |
 | 二次元 toon / 描边 shader | `shaders/anime_toon.gdshader`、`shaders/anime_outline.gdshader` |
+| 监控画面鱼眼 shader | `shaders/fisheye_feed.gdshader` |
 | Blender → GLB 导出脚本 | `tools/blender/export_character.py` |
 | 照片仓库/组合 | `scripts/room_demo/photo_store.gd` |
 | HUD / 照片仓库 / 拖放区 | `scripts/room_demo/room_ui.gd` |
@@ -72,7 +76,7 @@ primitive 占位，放入 `external-assets/generated/fontaine.glb` 后会自动�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 64 checks
+godot --headless --path . --script tests/test_room_demo.gd   # 70 checks
 godot --headless --path . --script tests/run_all.gd          # 26 suites
 ```
 

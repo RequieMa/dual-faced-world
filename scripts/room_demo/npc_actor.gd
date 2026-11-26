@@ -1,10 +1,10 @@
-extends Node3D
-## 观察房间里的两个 NPC（占位 primitive）：
-## - `reckless`（莽撞）：跑得快、视锥短；收到激光会冲过去，找不到线索就跑开，连续跑空后会短时间无视信号；
+extends CharacterBody3D
+## 观察房间里的两个 NPC（primitive 占位或 GLB avatar）：
+## - `reckless`（莽撞）：跑得比谨慎快、视锥短；收到激光会冲过去，找不到线索就跑开，连续跑空后会短时间无视信号；
 ## - `cautious`（谨慎）：走得慢、视锥长；会顺着激光慢慢走过去并四处翻找，不会因为跑空而忽略信号。
 ##
-## 不依赖物理引擎：位置按 waypoint / 目标点线性移动，宿主每帧 tick(delta)；
-## 线索用字典 {id, position, collected, node} 传入，NPC 看到/走到附近就会收集并发信号。
+## 用 CharacterBody3D + move_and_slide 移动，墙体/家具的 StaticBody3D 会挡住 NPC；
+## 不再直接改 global_position，因此不会穿墙。宿主每帧 tick(delta)。
 
 signal clue_collected(clue_id: String, position: Vector3)
 signal state_changed(state: String)
@@ -67,7 +67,7 @@ func configure(id: String, personality_name: String, start_pos: Vector3,
 	_signal_active = false
 	_seeking_clue_id = ""
 	if personality == PERSONALITY_RECKLESS:
-		speed = 3.2
+		speed = 1.65
 		vision_range = 6.0
 		vision_half_angle = 50.0
 		signal_range = 12.0
@@ -75,7 +75,7 @@ func configure(id: String, personality_name: String, start_pos: Vector3,
 		_waste_limit = 3
 		_ignore_seconds = 12.0
 	else:
-		speed = 1.1
+		speed = 0.60
 		vision_range = 8.5
 		vision_half_angle = 55.0
 		signal_range = 15.0
@@ -244,11 +244,19 @@ func _move_toward(point: Vector3, move_speed: float, delta: float) -> bool:
 	offset.y = 0.0
 	var distance := offset.length()
 	if distance <= ARRIVE_EPSILON:
+		velocity = Vector3.ZERO
 		return true
 	_face_toward(point)
-	var step := minf(move_speed * delta, distance)
-	global_position += offset.normalized() * step
-	return distance - step <= ARRIVE_EPSILON
+	var direction := offset.normalized()
+	velocity = Vector3(direction.x * move_speed, 0.0, direction.z * move_speed)
+	var before := global_position
+	move_and_slide()
+	var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
+	if moved < 0.0001:
+		# 墙体/家具挡住去路：当作“到不了”，让状态机进入搜索/换路，避免永远贴着墙。
+		velocity = Vector3.ZERO
+		return true
+	return distance - moved <= ARRIVE_EPSILON
 
 
 func _face_toward(point: Vector3) -> void:
@@ -282,6 +290,15 @@ func _ensure_visual() -> void:
 	_visual_built = true
 	var body_color := Color(0.9, 0.45, 0.2) if personality == PERSONALITY_RECKLESS \
 		else Color(0.25, 0.65, 0.9)
+	var collision := CollisionShape3D.new()
+	collision.name = "NpcCollision"
+	var capsule_shape := CapsuleShape3D.new()
+	capsule_shape.radius = 0.3
+	capsule_shape.height = 1.55
+	collision.shape = capsule_shape
+	collision.position.y = 0.85
+	add_child(collision)
+
 	_body_mesh = MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()
 	capsule.radius = 0.35

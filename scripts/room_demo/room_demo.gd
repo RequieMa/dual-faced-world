@@ -38,11 +38,13 @@ const MONITOR_SIZE := Vector2(3.6, 2.25)
 const SCROLL_CENTER := Vector3(3.2, 1.7, -3.84)
 const SCROLL_SIZE := Vector2(1.6, 1.0)
 
+## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
+## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
 const CAMERA_DEFS: Array[Dictionary] = [
-	{"id": "C1", "pos": Vector3(-8.4, 2.55, -21.2), "look": Vector3(-1.2, 1.2, -14.8), "room": "A"},
-	{"id": "C2", "pos": Vector3(-1.2, 2.55, -14.8), "look": Vector3(-8.4, 1.2, -21.2), "room": "A"},
-	{"id": "C3", "pos": Vector3(8.4, 2.55, -21.2), "look": Vector3(1.2, 1.2, -14.8), "room": "B"},
-	{"id": "C4", "pos": Vector3(1.2, 2.55, -14.8), "look": Vector3(8.4, 1.2, -21.2), "room": "B"},
+	{"id": "C1", "pos": Vector3(-8.55, 2.82, -21.3), "look": Vector3(-4.0, 0.80, -17.6), "room": "A"},
+	{"id": "C2", "pos": Vector3(-0.45, 2.82, -14.7), "look": Vector3(-5.0, 0.80, -18.2), "room": "A"},
+	{"id": "C3", "pos": Vector3(8.55, 2.82, -21.3), "look": Vector3(4.0, 0.80, -17.6), "room": "B"},
+	{"id": "C4", "pos": Vector3(0.45, 2.82, -14.7), "look": Vector3(5.0, 0.80, -18.2), "room": "B"},
 ]
 
 const CLUE_DEFS: Array[Dictionary] = [
@@ -713,7 +715,7 @@ func _build_camera_models() -> void:
 		lens_mat.emission = Color(0.1, 0.7, 0.9)
 		lens.material_override = lens_mat
 		holder.add_child(lens)
-		_add_label3d(_world, camera_id, position + Vector3(0, 0.35, 0), 26, Color(0.4, 0.85, 1.0))
+		_add_label3d(_world, camera_id, position + Vector3(0, 0.22, 0), 24, Color(0.4, 0.85, 1.0))
 
 
 func _build_feed_viewports() -> void:
@@ -727,12 +729,14 @@ func _build_feed_viewports() -> void:
 		add_child(viewport)
 		var camera := Camera3D.new()
 		camera.name = "FeedCamera_" + camera_id
-		camera.fov = 68.0
+		# 广角监控镜头 + canvas_item 鱼眼 shader；fov 太窄时鱼眼畸变会不明显。
+		camera.fov = 84.0
+		camera.near = 0.05
 		camera.current = true
 		var position: Vector3 = def["pos"]
 		var look: Vector3 = def["look"]
-		# 机位稍微探出摄像头模型，避免画面里塞满自己的镜头。
-		camera.position = position + (look - position).normalized() * 0.9
+		# 机位稍微探出摄像头模型，避免画面里塞满自己的镜头；偏移不要太大，否则会失去高位俯拍角度。
+		camera.position = position + (look - position).normalized() * 0.35
 		viewport.add_child(camera)
 		camera.look_at(look, Vector3.UP)
 		feeds.append({
