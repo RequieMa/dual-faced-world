@@ -1,0 +1,355 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/state_graph/state_graph_editor.gd" id="1_editor"]
+[ext_resource type="Script" path="res://scripts/state_graph/state_graph_palette.gd" id="2_palette"]
+[ext_resource type="Script" path="res://scripts/state_graph/state_graph_canvas.gd" id="3_canvas"]
+[ext_resource type="Script" path="res://scripts/state_graph/state_graph_outcome_panel.gd" id="4_outcome"]
+
+[node name="StateGraphEditor" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_editor")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.055, 0.062, 0.08, 1)
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="Root" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="Margin/Root"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Margin/Root/Header"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "状态图编辑器 · 状态 / 切换 / 结局"
+
+[node name="TitleSpacer" type="Control" parent="Margin/Root/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="Margin/Root/Header"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+text = "准备就绪"
+horizontal_alignment = 2
+text_overrun_behavior = 3
+
+[node name="FitButton" type="Button" parent="Margin/Root/Header"]
+layout_mode = 2
+text = "适配"
+
+[node name="ArrangeButton" type="Button" parent="Margin/Root/Header"]
+layout_mode = 2
+text = "整理布局"
+
+[node name="ReloadButton" type="Button" parent="Margin/Root/Header"]
+layout_mode = 2
+text = "重新载入"
+
+[node name="SaveButton" type="Button" parent="Margin/Root/Header"]
+layout_mode = 2
+text = "保存"
+
+[node name="Split" type="HBoxContainer" parent="Margin/Root"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="PaletteScroll" type="ScrollContainer" parent="Margin/Root/Split"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Palette" type="VBoxContainer" parent="Margin/Root/Split/PaletteScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+script = ExtResource("2_palette")
+
+[node name="Title" type="Label" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "状态节点"
+
+[node name="Hint" type="Label" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "拖到画布 = 复制；拖到右侧「结局规则」= 作为条件；点击 = 选中。画布：拖空白平移，Ctrl+滚轮缩放。"
+autowrap_mode = 2
+
+[node name="Chips" type="VBoxContainer" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="Separator" type="HSeparator" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+
+[node name="NewTitle" type="Label" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "新建状态节点"
+
+[node name="EntityEdit" type="LineEdit" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+placeholder_text = "实体，如：敌人"
+
+[node name="StateEdit" type="LineEdit" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+placeholder_text = "状态，如：潜行"
+
+[node name="AddButton" type="Button" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+text = "添加到画布"
+
+[node name="TemplateTitle" type="Label" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "快速新建（拖到画布）"
+
+[node name="Templates" type="GridContainer" parent="Margin/Root/Split/PaletteScroll/Palette"]
+layout_mode = 2
+columns = 1
+
+[node name="CanvasFrame" type="PanelContainer" parent="Margin/Root/Split"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Canvas" type="GraphEdit" parent="Margin/Root/Split/CanvasFrame"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("3_canvas")
+
+[node name="InspectorScroll" type="ScrollContainer" parent="Margin/Root/Split"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Inspector" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="InspectorTitle" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "节点检查器"
+
+[node name="SelectionLabel" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "未选中节点。点画布节点，或从左侧拖一个进来。"
+autowrap_mode = 2
+
+[node name="NodeEditBox" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="EntityRow" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="EntityCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/EntityRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "实体"
+
+[node name="EntityEdit" type="LineEdit" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/EntityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StateRow" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="StateCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/StateRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "状态"
+
+[node name="StateEdit" type="LineEdit" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/StateRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NodeButtons" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ApplyNodeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/NodeButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "应用状态"
+
+[node name="DeleteNodeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/NodeEditBox/NodeButtons"]
+layout_mode = 2
+text = "删除节点"
+
+[node name="OutcomeEditBox" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="OutcomeNameCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox"]
+layout_mode = 2
+text = "结局名称"
+
+[node name="OutcomeNameEdit" type="LineEdit" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox"]
+layout_mode = 2
+placeholder_text = "如：成功逃脱"
+
+[node name="OutcomeToneCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox"]
+layout_mode = 2
+text = "色调"
+
+[node name="OutcomeToneSelect" type="OptionButton" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox"]
+layout_mode = 2
+
+[node name="OutcomeButtons" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ApplyOutcomeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox/OutcomeButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "应用结局"
+
+[node name="DeleteOutcomeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomeEditBox/OutcomeButtons"]
+layout_mode = 2
+text = "删除结局"
+
+[node name="InspectorSeparator" type="HSeparator" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+
+[node name="OutcomePanel" type="PanelContainer" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+script = ExtResource("4_outcome")
+
+[node name="OutcomeBox" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="OutcomeTitle" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "结局规则"
+
+[node name="OutcomeHint" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "把左侧状态节点拖进来作为条件；填名字和色调后生成结局。"
+autowrap_mode = 2
+
+[node name="ConditionList" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="OutcomeNameRow" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="OutcomeNameCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox/OutcomeNameRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "结局名"
+
+[node name="OutcomeName" type="LineEdit" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox/OutcomeNameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "如：成功逃脱"
+
+[node name="ToneRow" type="HBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ToneCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox/ToneRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "色调"
+
+[node name="ToneSelect" type="OptionButton" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox/ToneRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CreateButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+text = "生成结局"
+
+[node name="Separator" type="HSeparator" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+
+[node name="ExistingCaption" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "已有结局"
+
+[node name="OutcomeList" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector/OutcomePanel/OutcomeBox"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="InspectorSeparator2" type="HSeparator" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+
+[node name="EdgeSection" type="VBoxContainer" parent="Margin/Root/Split/InspectorScroll/Inspector"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="EdgeTitle" type="Label" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "切换连线"
+
+[node name="EdgeFrom" type="OptionButton" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+
+[node name="EdgeTo" type="OptionButton" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+
+[node name="EdgeLabelEdit" type="LineEdit" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+placeholder_text = "触发词，如：E 拾取磁带（可空）"
+
+[node name="AddEdgeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+text = "添加切换"
+
+[node name="EdgeList" type="ItemList" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="DeleteEdgeButton" type="Button" parent="Margin/Root/Split/InspectorScroll/Inspector/EdgeSection"]
+layout_mode = 2
+text = "删除选中切换"

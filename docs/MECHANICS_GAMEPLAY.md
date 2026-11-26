@@ -41,6 +41,9 @@ godot --path . scenes/main.tscn
 | `Esc` | 关面板；没有面板时离开机位 |
 | `R` | 失败后重试本轮；通关后重玩 demo |
 
+上表只是「键 → 作用」。**每个键改哪个状态、通关的目标链、第 2/3 轮的决策树、可调数值在哪**，
+见 [DEMO_STATE_MAP.md](DEMO_STATE_MAP.md)（含 Mermaid 状态图，可直接编辑）。
+
 ### 1.2 可玩 demo（序章，3 轮）
 
 `scenes/main.tscn` 启动即进入 demo（`auto_tick == true` 时 `_ready` 自动 `start_demo()`）：

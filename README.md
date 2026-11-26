@@ -30,6 +30,8 @@ godot --path . scenes/<name>.tscn
 - `scenes/theater_monitor.tscn` / `scenes/theater_map.tscn`：剧院地图与监控
 - `scenes/integrated_sim.tscn`：集成 simulation（档案回放 + 实时推进 + 线索板）
 - `scenes/puzzle_lab.tscn`：解谜实验室（8 种常规解谜，见 [docs/PUZZLE_LAB.md](docs/PUZZLE_LAB.md)）
+- `scenes/state_graph_editor.tscn`：2D 状态图编辑器（状态切换 / 结局条件可拖拽编辑，见
+  [docs/STATE_GRAPH_EDITOR.md](docs/STATE_GRAPH_EDITOR.md)）
 - `scenes/demo_*.tscn`：TimeManager / TapeArchive / ClueManager 的模块 demo
 
 ## 测试
