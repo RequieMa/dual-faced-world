@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 31
+const EXPECTED_CHECKS := 38
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -31,14 +31,33 @@ func _initialize() -> void:
 			"ShelfB", "SofaB", "CabinetB", "RugB", "PlanterB"]:
 		_check("观察房间有家具 %s" % node_name, demo.find_child(node_name, true, false) != null)
 
-	# 坐下后滚动屏必须仍在视野里，否则照片拖放合成门禁码不可达。
+	# 坐下后显示屏应该基本占满画面；滚动屏是 2D 右上角面板。
 	demo.set_seated(true)
 	var seated_camera: Camera3D = demo.player.camera
-	_check("坐下后滚动屏在视野内",
-		seated_camera.is_position_in_frustum(Vector3(0, 3.12, -5.81)),
-		str(seated_camera.global_transform))
 	var monitor_mesh := demo.find_child("MonitorScreen", true, false) as MeshInstance3D
 	var monitor_quad := monitor_mesh.mesh as QuadMesh if monitor_mesh != null else null
+	if monitor_quad != null:
+		var distance := seated_camera.global_position.distance_to(Vector3(0, 1.55, -5.81))
+		var angular := rad_to_deg(2.0 * atan((monitor_quad.size.y * 0.5) / distance))
+		var ratio := angular / seated_camera.fov
+		_check("坐下后显示屏高度约占视野 88%+", ratio >= 0.88,
+			"ratio=%.3f angle=%.1f fov=%.1f" % [ratio, angular, seated_camera.fov])
+		_check("屏幕上下边都在垂直视野内",
+			seated_camera.is_position_in_frustum(Vector3(0, 2.65, -5.81))
+			and seated_camera.is_position_in_frustum(Vector3(0, 0.45, -5.81)))
+	_check("坐下后滚动屏面板可见", demo.ui.is_scroll_visible())
+	var lens := demo.find_child("LensRect", true, false) as ColorRect
+	_check("第一人称镜头畸变存在", lens != null and lens.material is ShaderMaterial)
+	var view_size: Vector2 = demo.get_viewport().get_visible_rect().size
+	var screen_center: Vector2 = view_size * 0.5
+	var screen_edge: Vector2 = Vector2(view_size.x * 0.9, view_size.y * 0.5)
+	var lens_center: Vector2 = demo.lens_source_position(screen_center)
+	var lens_edge: Vector2 = demo.lens_source_position(screen_edge)
+	_check("镜头畸变中心不偏移", lens_center.distance_to(screen_center) < 0.5,
+		str(lens_center))
+	_check("镜头畸变边缘鼠标向外补偿",
+		lens_edge.distance_to(screen_center) > screen_edge.distance_to(screen_center),
+		str(lens_edge))
 	_check("监控屏与 viewport 同比例",
 		monitor_quad != null and is_equal_approx(monitor_quad.size.x / monitor_quad.size.y,
 			float(demo.monitor_viewport.size.x) / float(demo.monitor_viewport.size.y)),
@@ -65,6 +84,10 @@ func _initialize() -> void:
 		"" if spot == null else "range=%.2f" % spot.spot_range)
 	_check("视锥角度不大", spot != null and spot.spot_angle <= 70.0,
 		"" if spot == null else "angle=%.1f" % spot.spot_angle)
+	_check("视锥不参与 GI", spot != null and is_equal_approx(spot.light_indirect_energy, 0.0))
+	var cone_material := cone.material_override as StandardMaterial3D if cone != null else null
+	_check("可见锥体双面渲染",
+		cone_material != null and cone_material.cull_mode == BaseMaterial3D.CULL_DISABLED)
 	_check("NPC 初始在停顿", String(npc.state) == "pause", str(npc.state))
 
 	# 4) NPC 有起步加速和走路起伏。

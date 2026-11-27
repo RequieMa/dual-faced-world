@@ -29,10 +29,12 @@ var _dwell_bar: ProgressBar
 var _dwell_label: Label
 var _notice: Label
 var _fisheye_material: ShaderMaterial
+var _snow_textures: Array[ImageTexture] = []
 
 
 func setup() -> void:
 	size = Vector2(1280, 800)
+	_build_snow_textures()
 	_fisheye_material = ShaderMaterial.new()
 	_fisheye_material.shader = FISHEYE_SHADER
 	_fisheye_material.set_shader_parameter("strength", FISHEYE_STRENGTH)
@@ -158,22 +160,28 @@ func refresh_feed_states(session) -> void:
 		if burned.has(feed_id):
 			label.text = "%s · 烧毁" % feed_id
 			label.add_theme_color_override("font_color", Color(0.95, 0.45, 0.4))
-			if button != null:
+			if button is TextureRect:
+				(button as TextureRect).texture = _snow_texture()
+				button.modulate = Color(0.85, 0.85, 0.9, 1.0)
+			elif button != null:
 				button.modulate = Color(0.2, 0.2, 0.24, 1.0)
 		elif cooldowns.has(feed_id):
 			label.text = "%s · 冷却 %.1fs" % [feed_id, float(cooldowns[feed_id])]
 			label.add_theme_color_override("font_color", Color(0.9, 0.72, 0.35))
-			if button != null:
+			if button is TextureRect:
+				(button as TextureRect).texture = _feed_texture(feed)
 				button.modulate = Color(0.55, 0.55, 0.6, 1.0)
 		elif feed_id == current:
 			label.text = "%s · 监控中" % feed_id
 			label.add_theme_color_override("font_color", COLOR_ACCENT)
-			if button != null:
+			if button is TextureRect:
+				(button as TextureRect).texture = _feed_texture(feed)
 				button.modulate = Color(1, 1, 1, 1)
 		else:
 			label.text = "%s · 待机" % feed_id
 			label.add_theme_color_override("font_color", COLOR_MUTED)
-			if button != null:
+			if button is TextureRect:
+				(button as TextureRect).texture = _feed_texture(feed)
 				button.modulate = Color(1, 1, 1, 1)
 
 
@@ -230,9 +238,11 @@ func uses_fisheye() -> bool:
 
 ## 画面被鱼眼 shader 向外弯过；右键激光需要把点击坐标反变换回原始画面 UV。
 func _undistort_uv(uv: Vector2) -> Vector2:
+	# shader 是 p_src = p_screen * (1 - s*r^2)；这里反解 p_screen。
 	var p := uv * 2.0 - Vector2.ONE
-	var radius_squared := p.length_squared()
-	p /= 1.0 + FISHEYE_STRENGTH * radius_squared
+	for i in 3:
+		var radius_squared := p.length_squared()
+		p /= maxf(1.0 - FISHEYE_STRENGTH * radius_squared, 0.15)
 	return (p * 0.5 + Vector2(0.5, 0.5)).clamp(Vector2.ZERO, Vector2.ONE)
 
 
@@ -241,6 +251,29 @@ func _feed_by_id(feed_id: String) -> Dictionary:
 		if String(feed.get("id", "")) == feed_id:
 			return feed
 	return {}
+
+
+## 烧毁机位显示动态雪花：几张随机噪声轮播，避免停在最后一帧。
+func _build_snow_textures() -> void:
+	for frame in 4:
+		var image := Image.create(320, 180, false, Image.FORMAT_RGB8)
+		for y in 180:
+			for x in 320:
+				var value := randi() % 256
+				image.set_pixel(x, y, Color8(value, value, value))
+		_snow_textures.append(ImageTexture.create_from_image(image))
+
+
+func _snow_texture() -> Texture2D:
+	if _snow_textures.is_empty():
+		return null
+	var index := (Time.get_ticks_msec() / 90) % _snow_textures.size()
+	return _snow_textures[index]
+
+
+func is_burned_visual(feed_id: String) -> bool:
+	var view := _feed_buttons.get(feed_id) as TextureRect
+	return view != null and _snow_textures.has(view.texture)
 
 
 func _feed_texture(feed: Dictionary) -> Texture2D:

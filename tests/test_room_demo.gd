@@ -141,7 +141,7 @@ func _run_scene_tests() -> void:
 	_check("场景有照片仓库", demo.photo_store != null)
 	_check("场景有 3D 监控屏 SubViewport", demo.monitor_viewport != null)
 	_check("3D 监控屏有屏幕 UI", demo.monitor_ui != null)
-	_check("场景有 3D 滚动屏 SubViewport", demo.scroll_viewport != null)
+	_check("场景有滚动屏 SubViewport", demo.scroll_viewport != null)
 	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
 	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
 	_check("NPC 使用带碰撞的 CharacterBody3D", demo.npcs[0] is CharacterBody3D
@@ -182,7 +182,27 @@ func _run_scene_tests() -> void:
 	_check("C1 成为当前机位", String(demo.camera_session.get_state().get("current", "")) == "C1")
 	demo.tick(999.0)
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))
+	_check("烧毁画面显示雪花", demo.monitor_ui.is_burned_visual("C1"))
 	_check("烧毁后拒绝再进入", not demo.select_feed("C1"))
+
+	demo.set_seated(true)
+	_check("可以放大 C2", demo.select_feed("C2"))
+	_check("放大后显示返回按钮", demo.ui.is_feed_zoomed())
+	demo.ui._back_button.pressed.emit()
+	_check("返回按钮关闭放大", not demo.ui.is_feed_zoomed())
+	_check("可以放大 C3", demo.select_feed("C3"))
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	demo._unhandled_input(esc)
+	_check("Esc 关闭放大", not demo.ui.is_feed_zoomed())
+	demo.set_seated(false)
+
+	var raw_uv := Vector2(0.9, 0.5)
+	var corrected_uv: Vector2 = demo.monitor_ui._undistort_uv(raw_uv)
+	_check("鱼眼点击坐标向外展开",
+		corrected_uv.distance_to(Vector2(0.5, 0.5)) > raw_uv.distance_to(Vector2(0.5, 0.5)),
+		"raw=%s corrected=%s" % [raw_uv, corrected_uv])
 
 	var a_photo: String = demo.capture_clue_photo("clue_a")
 	var b_photo: String = demo.capture_clue_photo("clue_b")

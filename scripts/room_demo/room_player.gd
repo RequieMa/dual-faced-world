@@ -116,7 +116,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if seated:
 		var key_event := event as InputEventKey
 		if key_event != null and key_event.pressed and not key_event.echo \
-				and (key_event.keycode == KEY_F or key_event.keycode == KEY_ESCAPE):
+				and key_event.keycode == KEY_F:
 			stand()
 			get_viewport().set_input_as_handled()
 		return
