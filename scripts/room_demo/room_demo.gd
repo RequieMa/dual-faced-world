@@ -16,6 +16,7 @@ const PLAYER_SCRIPT := preload("res://scripts/room_demo/room_player.gd")
 const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
+const LENS_SHADER := preload("res://shaders/lens_distortion.gdshader")
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const CAMERA_SESSION_SCRIPT := preload("res://scripts/camera/camera_session.gd")
 
@@ -26,9 +27,9 @@ const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
 const ROOM_HALF_WIDTH := 8.0
 const ROOM_HALF_DEPTH := 6.0
 const ROOM_HEIGHT := 3.4
-const CHAIR_POS := Vector3(0, 0, -3.2)
-const STAND_POS := Vector3(0, 0, -1.4)
-const SCREEN_POS := Vector3(0, 1.85, -5.75)
+const CHAIR_POS := Vector3(0, 0, -4.1)
+const STAND_POS := Vector3(0, 0, -2.3)
+const SCREEN_POS := Vector3(0, 1.75, -5.75)
 const DOOR_POS := Vector3(0, 0, 6.0)
 const DOOR_CODE := "A-317"
 const CAMERA_DWELL := 45.0
@@ -36,11 +37,9 @@ const CAMERA_COOLDOWN := 8.0
 const SIGNAL_RANGE := 22.0
 
 ## 墙上的物理屏幕（内容来自 SubViewport，不是 2D 覆盖层）。
-const MONITOR_CENTER := Vector3(0, 1.95, -5.81)
+const MONITOR_CENTER := Vector3(0, 1.75, -5.81)
 # monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
-const MONITOR_SIZE := Vector2(2.72, 1.7)
-const SCROLL_CENTER := Vector3(0, 3.12, -5.81)
-const SCROLL_SIZE := Vector2(1.2, 0.506)
+const MONITOR_SIZE := Vector2(3.52, 2.2)
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -100,6 +99,7 @@ func _ready() -> void:
 	_build_camera_session()
 	_build_photo_store()
 	_build_ui()
+	_build_lens_distortion()
 	_refresh_all_ui()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	ui.set_objective("坐上监控椅（F），用 4 路摄像头引导两个 NPC 找到线索")
@@ -179,6 +179,7 @@ func select_feed(feed_id: String) -> bool:
 		return false
 	selected_feed = feed_id
 	monitor_ui.set_selected(feed_id)
+	ui.set_feed_zoomed(true)
 	monitor_ui.refresh_feed_states(camera_session)
 	monitor_ui.set_notice("正在看 %s" % feed_id)
 	ui.set_notification("正在看 %s" % feed_id)
@@ -190,6 +191,7 @@ func close_feed() -> void:
 		return
 	camera_session.leave(selected_feed)
 	selected_feed = ""
+	ui.set_feed_zoomed(false)
 	if monitor_ui != null:
 		monitor_ui.set_selected("")
 		monitor_ui.refresh_feed_states(camera_session)
@@ -210,6 +212,7 @@ func _build_camera_session() -> void:
 func _on_camera_overloaded(camera_id: String) -> void:
 	if selected_feed == camera_id:
 		selected_feed = ""
+		ui.set_feed_zoomed(false)
 		monitor_ui.set_selected("")
 	monitor_ui.set_notice("%s 停留过久，过载烧毁" % camera_id)
 	ui.set_notification("%s 停留过久，过载烧毁" % camera_id)
@@ -452,6 +455,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
+	if player != null and player.seated and not selected_feed.is_empty() \
+			and (key.keycode == KEY_ESCAPE or key.keycode == KEY_BACKSPACE):
+		close_feed()
+		get_viewport().set_input_as_handled()
+		return
 	if key.keycode == KEY_S and player != null and player.seated:
 		take_screenshot()
 		get_viewport().set_input_as_handled()
@@ -502,38 +510,11 @@ func _forward_mouse_to_monitor(event: InputEvent) -> bool:
 	return true
 
 
-## 把 3D 滚动屏投影到屏幕坐标，给 HUD 上的透明拖放接收区对齐。
+## 滚动屏是坐下后右上角的 2D 面板，不再投影 3D 屏幕；这里只控制显隐。
 func _update_scroll_drop_overlay() -> void:
 	if ui == null:
 		return
-	if player == null or not player.seated or player.camera == null or demo_complete:
-		ui.set_scroll_drop_visible(false)
-		return
-	var camera: Camera3D = player.camera
-	if camera.is_position_behind(SCROLL_CENTER):
-		ui.set_scroll_drop_visible(false)
-		return
-	var half := SCROLL_SIZE * 0.5
-	var corners := [
-		SCROLL_CENTER + Vector3(-half.x, half.y, 0),
-		SCROLL_CENTER + Vector3(half.x, half.y, 0),
-		SCROLL_CENTER + Vector3(-half.x, -half.y, 0),
-		SCROLL_CENTER + Vector3(half.x, -half.y, 0),
-	]
-	var min_point := Vector2(INF, INF)
-	var max_point := Vector2(-INF, -INF)
-	for corner in corners:
-		var screen_point: Vector2 = camera.unproject_position(corner)
-		min_point.x = minf(min_point.x, screen_point.x)
-		min_point.y = minf(min_point.y, screen_point.y)
-		max_point.x = maxf(max_point.x, screen_point.x)
-		max_point.y = maxf(max_point.y, screen_point.y)
-	var rect := Rect2(min_point, max_point - min_point)
-	if rect.size.x < 4.0 or rect.size.y < 4.0:
-		ui.set_scroll_drop_visible(false)
-		return
-	ui.set_scroll_drop_rect(rect)
-	ui.set_scroll_drop_visible(true)
+	ui.set_scroll_drop_visible(player != null and player.seated and not demo_complete)
 
 
 # --- 3D 装配 -----------------------------------------------------------------
@@ -543,8 +524,8 @@ func _build_environment() -> void:
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color(0.035, 0.04, 0.055)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.38, 0.42, 0.52)
-	environment.ambient_light_energy = 1.05
+	environment.ambient_light_color = Color(0.32, 0.36, 0.46)
+	environment.ambient_light_energy = 0.72
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var world_env := WorldEnvironment.new()
 	world_env.environment = environment
@@ -552,16 +533,17 @@ func _build_environment() -> void:
 
 	var key_light := DirectionalLight3D.new()
 	key_light.rotation_degrees = Vector3(-55, -35, 0)
-	key_light.light_energy = 1.25
+	key_light.light_energy = 1.0
 	key_light.shadow_enabled = true
 	add_child(key_light)
 
-	_add_omni(Vector3(0, 3.0, 0), Color(0.75, 0.82, 1.0), 1.8, 12.0)
-	_add_omni(Vector3(-4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.5, 10.0)
-	_add_omni(Vector3(4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.5, 10.0)
-	_add_omni(Vector3(0, 2.8, 4.0), Color(0.9, 0.88, 0.8), 1.2, 9.0)
-	_add_omni(Vector3(-5, 2.6, -18), Color(1.0, 0.82, 0.55), 1.4, 9.0)
-	_add_omni(Vector3(5, 2.6, -18), Color(1.0, 0.82, 0.55), 1.4, 9.0)
+	_add_omni(Vector3(0, 3.0, 0), Color(0.75, 0.82, 1.0), 2.0, 12.0)
+	_add_omni(Vector3(-4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.8, 10.0)
+	_add_omni(Vector3(4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.8, 10.0)
+	_add_omni(Vector3(0, 2.8, 4.0), Color(0.9, 0.88, 0.8), 1.3, 9.0)
+	# 观察房间刻意更暗，NPC 主要靠自己的视锥/顶灯看局部。
+	_add_omni(Vector3(-5, 2.6, -18), Color(1.0, 0.82, 0.55), 0.75, 8.0)
+	_add_omni(Vector3(5, 2.6, -18), Color(1.0, 0.82, 0.55), 0.75, 8.0)
 
 
 func _add_omni(position: Vector3, color: Color, energy: float, range_m: float) -> void:
@@ -620,11 +602,11 @@ func _build_control_room() -> void:
 			Color(0.5, 0.7, 1.0))
 
 	# 监控台和侧台。
-	_add_box(_world, "ConsoleDesk", Vector3(6.0, 0.8, 0.9), Vector3(0, 0.4, -5.0),
+	_add_box(_world, "ConsoleDesk", Vector3(6.0, 0.55, 0.9), Vector3(0, 0.275, -5.0),
 		Color(0.18, 0.21, 0.28))
-	_add_box(_world, "ConsoleLip", Vector3(6.2, 0.06, 0.94), Vector3(0, 0.83, -5.0),
+	_add_box(_world, "ConsoleLip", Vector3(6.2, 0.06, 0.94), Vector3(0, 0.58, -5.0),
 		Color(0.42, 0.58, 0.7), false)
-	_add_box(_world, "ConsolePanel", Vector3(1.4, 0.5, 0.04), Vector3(-1.6, 0.52, -4.54),
+	_add_box(_world, "ConsolePanel", Vector3(1.4, 0.35, 0.04), Vector3(-1.6, 0.38, -4.54),
 		Color(0.1, 0.5, 0.75), false, Color(0.05, 0.3, 0.5))
 	_add_box(_world, "SideConsoleL", Vector3(2.2, 0.75, 0.65), Vector3(-4.7, 0.375, -1.4),
 		Color(0.17, 0.2, 0.26))
@@ -635,10 +617,7 @@ func _build_control_room() -> void:
 	_add_box(_world, "PillarL", Vector3(0.5, h, 0.5), Vector3(-6.2, h * 0.5, -3.6), trim)
 	_add_box(_world, "PillarR", Vector3(0.5, h, 0.5), Vector3(6.2, h * 0.5, -3.6), trim)
 
-	_add_box(_world, "MonitorBacking", Vector3(3.1, 1.8, 0.08), Vector3(0, 1.95, -5.92),
-		Color(0.03, 0.04, 0.06), false)
-	# 滚动屏放到监控屏正上方，保证坐姿 16:9 / 4:3 / 方屏都能看见。
-	_add_box(_world, "ScrollBacking", Vector3(1.5, 0.56, 0.08), Vector3(0, 3.12, -5.92),
+	_add_box(_world, "MonitorBacking", Vector3(3.9, 2.4, 0.08), Vector3(0, 1.75, -5.92),
 		Color(0.03, 0.04, 0.06), false)
 
 	# 椅子：椅背朝门（+Z），人坐下后面向屏幕（-Z）。
@@ -858,8 +837,6 @@ func _build_screens() -> void:
 	scroll_ui = SCROLL_UI_SCRIPT.new()
 	scroll_viewport.add_child(scroll_ui)
 	scroll_ui.setup()
-	scroll_mesh = _make_screen_mesh("ScrollScreen", SCROLL_CENTER, SCROLL_SIZE,
-		scroll_viewport.get_texture())
 	_refresh_scroll_screen()
 
 
@@ -885,7 +862,7 @@ func _build_player() -> void:
 	player = PLAYER_SCRIPT.new()
 	player.name = "Player"
 	_world.add_child(player)
-	player.global_position = Vector3(1.2, 0, -1.2)
+	player.global_position = Vector3(1.2, 0, -1.8)
 	player.configure(CHAIR_POS, STAND_POS, SCREEN_POS, DOOR_POS)
 	player.seat_changed.connect(_on_seat_changed)
 	player.interaction.connect(_on_interaction)
@@ -926,6 +903,26 @@ func _build_ui() -> void:
 	add_child(ui)
 	ui.setup()
 	ui.photo_dropped.connect(drop_photo_to_screen)
+	ui.close_feed_requested.connect(close_feed)
+	if scroll_viewport != null:
+		ui.set_scroll_texture(scroll_viewport.get_texture())
+
+
+## 第一人称镜头畸变：layer 0 在 3D 之上、HUD layer 1 之下。
+func _build_lens_distortion() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "LensDistortion"
+	layer.layer = 0
+	add_child(layer)
+	var rect := ColorRect.new()
+	rect.name = "LensRect"
+	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var material := ShaderMaterial.new()
+	material.shader = LENS_SHADER
+	material.set_shader_parameter("strength", 0.045)
+	rect.material = material
+	layer.add_child(rect)
 
 
 func _refresh_all_ui() -> void:

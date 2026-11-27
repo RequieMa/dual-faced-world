@@ -447,6 +447,11 @@ func _ensure_visual() -> void:
 	_spotlight.spot_angle_attenuation = 1.0
 	_spotlight.shadow_enabled = true
 	_spotlight.shadow_bias = 0.02
+	# 只要直接照射，不参与 GI/间接光。
+	if "light_indirect_energy" in _spotlight:
+		_spotlight.light_indirect_energy = 0.0
+	if "light_volumetric_fog_energy" in _spotlight:
+		_spotlight.light_volumetric_fog_energy = 0.0
 	# 保持在眼位；依靠 body/head/avatar 关闭投影避免自遮挡，避免灯跑进墙里。
 	_spotlight.position = Vector3.ZERO
 	_vision_pivot.add_child(_spotlight)
@@ -469,7 +474,7 @@ func _ensure_visual() -> void:
 	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.05)
 	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	cone_material.cull_mode = BaseMaterial3D.CULL_BACK
+	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_cone_visual.material_override = cone_material
 	_vision_pivot.add_child(_cone_visual)
 
