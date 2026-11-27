@@ -19,9 +19,9 @@ const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const CAMERA_SESSION_SCRIPT := preload("res://scripts/camera/camera_session.gd")
 
+const CHICKEN_GLB := "res://external-assets/generated/chicken.glb"
 const SOYO_GLB := "res://external-assets/generated/soyo.glb"
 const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
-const FONTAINE_GLB := "res://external-assets/generated/fontaine.glb"
 
 const CHAIR_POS := Vector3(0, 0, 1.5)
 const STAND_POS := Vector3(0, 0, 2.6)
@@ -818,19 +818,18 @@ func _build_npcs() -> void:
 	reckless.configure("reckless", "reckless", Vector3(-6, 0, -19), waypoints)
 	_world.add_child(reckless)
 	reckless.clue_collected.connect(_on_clue_collected)
-	var soyo := AVATAR_LOADER.load_avatar(SOYO_GLB, 1.72, 180.0)
-	if soyo != null:
-		reckless.attach_avatar(soyo)
+	var chicken := AVATAR_LOADER.load_avatar(CHICKEN_GLB, 1.72, 180.0)
+	if chicken != null:
+		reckless.attach_avatar(chicken)
 	npcs.append(reckless)
 	var cautious = NPC_SCRIPT.new()
 	cautious.name = "NpcCautious"
 	cautious.configure("cautious", "cautious", Vector3(6, 0, -19), waypoints)
 	_world.add_child(cautious)
 	cautious.clue_collected.connect(_on_clue_collected)
-	# 枫丹 zip 目前只有材质预设、没有 mesh；如果以后放入 fontaine.glb，这里会自动接管。
-	var fontaine := AVATAR_LOADER.load_avatar(FONTAINE_GLB, 1.72, 180.0)
-	if fontaine != null:
-		cautious.attach_avatar(fontaine)
+	var soyo := AVATAR_LOADER.load_avatar(SOYO_GLB, 1.72, 180.0)
+	if soyo != null:
+		cautious.attach_avatar(soyo)
 	npcs.append(cautious)
 
 

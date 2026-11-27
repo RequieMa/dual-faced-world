@@ -14,6 +14,7 @@ const UI_SCRIPT := "res://scripts/room_demo/room_ui.gd"
 const AVATAR_LOADER := "res://scripts/room_demo/avatar_loader.gd"
 const TOON_SHADER := "res://shaders/anime_toon.gdshader"
 const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
+const CHICKEN_GLB := "res://external-assets/generated/chicken.glb"
 const SOYO_GLB := "res://external-assets/generated/soyo.glb"
 
 var _failures: Array[String] = []
@@ -160,10 +161,10 @@ func _run_scene_tests() -> void:
 		loader.load_avatar("res://external-assets/generated/missing.glb") == null)
 	if FileAccess.file_exists(LUMINE_GLB):
 		_check("玩家成功挂上 Lumine avatar", demo.player.has_avatar())
+	if FileAccess.file_exists(CHICKEN_GLB):
+		_check("莽撞 NPC 成功挂上鸡哥 avatar", demo.npcs[0].has_avatar())
 	if FileAccess.file_exists(SOYO_GLB):
-		_check("莽撞 NPC 成功挂上 Soyo avatar", demo.npcs[0].has_avatar())
-	if FileAccess.file_exists("res://external-assets/generated/fontaine.glb"):
-		_check("谨慎 NPC 成功挂上枫丹 avatar", demo.npcs[1].has_avatar())
+		_check("谨慎 NPC 成功挂上 Soyo avatar", demo.npcs[1].has_avatar())
 
 	_check("初始未坐下", not demo.player.seated)
 	demo.set_seated(true)

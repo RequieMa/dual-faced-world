@@ -8,20 +8,16 @@ Godot 编辑器导入，而是用 `GLTFDocument` 从磁盘直接加载；文件�
 
 | 角色 | 用途 | 源文件 | 运行时文件 |
 |---|---|---|---|
-| Soyo | 莽撞 NPC | `SOYO1.blend` | `external-assets/generated/soyo.glb` |
+| 鸡哥 | 莽撞 NPC | `鸡哥模型.rar` → `鸡哥模型.fbx` | `external-assets/generated/chicken.glb` |
+| Soyo | 谨慎 NPC | `SOYO1.blend` | `external-assets/generated/soyo.glb` |
 | Tactical Lumine | 玩家 | `Tactical Lumine.blend`（zstd 压缩，先解压） | `external-assets/generated/lumine.glb` |
-| 枫丹 | 谨慎 NPC | **zip 内只有材质预设，没有 mesh** | `external-assets/generated/fontaine.glb`（待补） |
 
 ### 关于“枫丹”zip
 
 `枫丹_by_小二今天吃啥啊_*.zip` 里是 10 个角色名的 `.blend` + `模型预设导入.py`。
 逐个打开检查后，每个 `.blend` 都只有 `2` 个对象（一个灯光 + 一个空物体），`0` 个 mesh、
 `0` 个 armature；`模型预设导入.py` 是一个把材质预设套到**已有模型**上的 Blender 插件。
-因此这个包本身不能直接作为谨慎 NPC 的可见模型。
-
-目前谨慎 NPC 使用 primitive 占位；只要把真正的枫丹 mesh 导出成
-`external-assets/generated/fontaine.glb`（或提供带 mesh 的 `.blend`），`room_demo.gd`
-会自动加载并替换占位，不需要改场景。
+因此这个包本身不能直接作为可见模型；当前 demo 用 Soyo 作为谨慎 NPC，不再依赖枫丹模型。
 
 ## 导出
 
@@ -34,9 +30,9 @@ $blender = "E:\dev\tool\blender-4.2.17\blender-4.2.17-windows-x64\blender.exe"
 & $blender -b external-assets\_work\lumine\TacticalLumine_decoded.blend `
   --python tools\blender\export_character.py -- lumine external-assets\generated\lumine.glb
 
-# 有真正枫丹 mesh 的 .blend 时（generic 模式）：
-& $blender -b <fontaine-mesh>.blend `
-  --python tools\blender\export_character.py -- fontaine external-assets\generated\fontaine.glb
+# 鸡哥是 FBX；先解压 .rar，再用专用脚本导入/导出：
+tar -xf "external-assets\鸡哥模型_by_*.rar" -C external-assets\_work\chicken
+& $blender -b --python tools\blender\export_chicken.py
 ```
 
 `Tactical Lumine.blend` 是 zstd 压缩流；先解压：
@@ -56,18 +52,20 @@ zstd -d -f "external-assets\_work\lumine\Tactical Lumine.blend" `
   - 这样 Soyo 用 `soyo_body_pants` / `soyo_hair` / `soyo_clothes`，
     Lumine 用 `*_Diffuse` / `Lumine Clothes Texture`；
 - 导出 GLB（embedded textures、skins、无动画；源 `.blend` 没有可用动作）。
+- 鸡哥是纯色 FBX、无骨骼/贴图（带一个篮球道具），`export_chicken.py` 把 7 个材质转成
+  Principled base color 后导出，保留模型原生的篮球。
 
 ## Godot 侧
 
 - `scripts/room_demo/avatar_loader.gd`
   - `GLTFDocument.append_from_file()` → 运行时场景；
-  - 按目标身高归一化：Soyo 1.72m，Lumine 玩家 1.60m（第一人称相机在 1.66m，避免埋进头）；
-  - 上臂骨放下来（源 rest pose 是 T-pose）；
+  - 按目标身高归一化：NPC 1.72m，Lumine 玩家 1.60m（第一人称相机在 1.66m，避免埋进头）；
+  - Soyo/Lumine 的上臂骨放下来（源 rest pose 是 T-pose）；鸡哥没有骨骼，保持静态；
   - 每个 surface 替换成 `shaders/anime_toon.gdshader`，并把
     `shaders/anime_outline.gdshader` 设为 `next_pass`；
   - 贴图/alpha/描边宽度都在运行时反推，不依赖导入的 `.import` 文件。
 - `scripts/room_demo/room_demo.gd`
-  - 玩家加载 Lumine；莽撞 NPC 加载 Soyo；谨慎 NPC 尝试 Fontaine，失败则保留占位；
+  - 玩家加载 Lumine；莽撞 NPC 加载鸡哥；谨慎 NPC 加载 Soyo；模型缺失则保留 primitive；
   - 模型缺失只 warning，不阻塞场景和测试。
 - `scripts/room_demo/room_player.gd` / `npc_actor.gd`
   - `attach_avatar()` 隐藏 primitive 身体，保留 NPC 的名字标签和视锥。

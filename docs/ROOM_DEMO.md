@@ -66,9 +66,8 @@
 | 3D 滚动屏内容 | `scripts/room_demo/scroll_screen_ui.gd` |
 | 测试 | `tests/test_room_demo.gd` |
 
-Avatar 资产说明（包括枫丹 zip 只有材质预设、没有 mesh 的原因）见
-[docs/AVATARS.md](AVATARS.md)。Soyo / Lumine 已接入；枫丹模型缺失时谨慎 NPC 回退到
-primitive 占位，放入 `external-assets/generated/fontaine.glb` 后会自动替换。
+Avatar 资产说明见 [docs/AVATARS.md](AVATARS.md)。当前：鸡哥 = 莽撞 NPC，
+Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、没有 mesh，暂不参与 demo。
 
 旧 demo 的回归仍走 `scenes/game_root.tscn`；`tests/test_game_root_*.gd` 已改成直接加载
 `game_root.tscn`，不再假设 `main.tscn` 是旧入口。
@@ -76,7 +75,7 @@ primitive 占位，放入 `external-assets/generated/fontaine.glb` 后会自动�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 70 checks
+godot --headless --path . --script tests/test_room_demo.gd   # 71 checks
 godot --headless --path . --script tests/run_all.gd          # 26 suites
 ```
 
@@ -90,9 +89,9 @@ godot --headless --path . --script tests/run_all.gd          # 26 suites
 
 ## 6. 已知简化
 
-- Soyo（莽撞）和 Tactical Lumine（玩家）已换成 Blender 模型；谨慎 NPC 的枫丹 zip
-  只有材质预设、没有 mesh，目前仍是 primitive 占位（见 `docs/AVATARS.md`）；
-- 模型是静态 rest pose（源 .blend 没有可用动作），只做了上臂放下的 A-pose，没有跑步动画；
+- 鸡哥（莽撞）、Soyo（谨慎）、Tactical Lumine（玩家）已换成模型；枫丹 zip 只有材质
+  预设、没有 mesh，暂不参与 demo（见 `docs/AVATARS.md`）；
+- 模型没有可用的跑步动画：Soyo/Lumine 只做了上臂放下的 A-pose，鸡哥是无骨骼静态模型；
 - NPC 用 waypoint 直线移动，没有导航网格/碰撞避让；
 - 照片缩略图在 headless 下是占位色块；真实运行会截 SubViewport 画面；
 - 没有动画/音效/字幕；数值为 demo 尺度，不是最终设计；
