@@ -23,20 +23,24 @@ const CHICKEN_GLB := "res://external-assets/generated/chicken.glb"
 const SOYO_GLB := "res://external-assets/generated/soyo.glb"
 const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
 
-const CHAIR_POS := Vector3(0, 0, 1.5)
-const STAND_POS := Vector3(0, 0, 2.6)
-const SCREEN_POS := Vector3(0, 1.5, -3.8)
-const DOOR_POS := Vector3(0, 0, 4.0)
+const ROOM_HALF_WIDTH := 8.0
+const ROOM_HALF_DEPTH := 6.0
+const ROOM_HEIGHT := 3.4
+const CHAIR_POS := Vector3(0, 0, -3.2)
+const STAND_POS := Vector3(0, 0, -1.4)
+const SCREEN_POS := Vector3(0, 1.85, -5.75)
+const DOOR_POS := Vector3(0, 0, 6.0)
 const DOOR_CODE := "A-317"
 const CAMERA_DWELL := 45.0
 const CAMERA_COOLDOWN := 8.0
 const SIGNAL_RANGE := 22.0
 
 ## 墙上的物理屏幕（内容来自 SubViewport，不是 2D 覆盖层）。
-const MONITOR_CENTER := Vector3(0, 1.7, -3.84)
-const MONITOR_SIZE := Vector2(3.6, 2.25)
-const SCROLL_CENTER := Vector3(3.2, 1.7, -3.84)
-const SCROLL_SIZE := Vector2(1.6, 1.0)
+const MONITOR_CENTER := Vector3(0, 1.95, -5.81)
+# monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
+const MONITOR_SIZE := Vector2(2.72, 1.7)
+const SCROLL_CENTER := Vector3(0, 3.12, -5.81)
+const SCROLL_SIZE := Vector2(1.2, 0.506)
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -48,8 +52,9 @@ const CAMERA_DEFS: Array[Dictionary] = [
 ]
 
 const CLUE_DEFS: Array[Dictionary] = [
-	{"id": "clue_a", "label": "半张门禁码", "position": Vector3(-8.2, 0.38, -21.2)},
-	{"id": "clue_b", "label": "另半张门禁码", "position": Vector3(8.2, 0.38, -21.2)},
+	# 放在房间空地，避免被箱子/柜子完全挡住射线；NPC 仍要靠监控找。
+	{"id": "clue_a", "label": "半张门禁码", "position": Vector3(-7.8, 0.38, -18.6)},
+	{"id": "clue_b", "label": "另半张门禁码", "position": Vector3(7.8, 0.38, -18.6)},
 ]
 
 var player: CharacterBody3D = null
@@ -524,7 +529,7 @@ func _update_scroll_drop_overlay() -> void:
 		max_point.x = maxf(max_point.x, screen_point.x)
 		max_point.y = maxf(max_point.y, screen_point.y)
 	var rect := Rect2(min_point, max_point - min_point)
-	if rect.size.x < 10.0 or rect.size.y < 10.0:
+	if rect.size.x < 4.0 or rect.size.y < 4.0:
 		ui.set_scroll_drop_visible(false)
 		return
 	ui.set_scroll_drop_rect(rect)
@@ -538,8 +543,8 @@ func _build_environment() -> void:
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color(0.035, 0.04, 0.055)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.32, 0.36, 0.46)
-	environment.ambient_light_energy = 0.85
+	environment.ambient_light_color = Color(0.38, 0.42, 0.52)
+	environment.ambient_light_energy = 1.05
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var world_env := WorldEnvironment.new()
 	world_env.environment = environment
@@ -547,12 +552,14 @@ func _build_environment() -> void:
 
 	var key_light := DirectionalLight3D.new()
 	key_light.rotation_degrees = Vector3(-55, -35, 0)
-	key_light.light_energy = 1.1
+	key_light.light_energy = 1.25
 	key_light.shadow_enabled = true
 	add_child(key_light)
 
-	_add_omni(Vector3(0, 2.6, 0), Color(0.75, 0.82, 1.0), 1.6, 9.0)
-	_add_omni(Vector3(0, 2.3, 2.4), Color(0.8, 0.86, 1.0), 1.4, 8.0)
+	_add_omni(Vector3(0, 3.0, 0), Color(0.75, 0.82, 1.0), 1.8, 12.0)
+	_add_omni(Vector3(-4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.5, 10.0)
+	_add_omni(Vector3(4.5, 3.0, -3.0), Color(0.8, 0.86, 1.0), 1.5, 10.0)
+	_add_omni(Vector3(0, 2.8, 4.0), Color(0.9, 0.88, 0.8), 1.2, 9.0)
 	_add_omni(Vector3(-5, 2.6, -18), Color(1.0, 0.82, 0.55), 1.4, 9.0)
 	_add_omni(Vector3(5, 2.6, -18), Color(1.0, 0.82, 0.55), 1.4, 9.0)
 
@@ -568,29 +575,85 @@ func _add_omni(position: Vector3, color: Color, energy: float, range_m: float) -
 
 func _build_control_room() -> void:
 	var wall := Color(0.3, 0.33, 0.4)
+	var trim := Color(0.16, 0.19, 0.25)
 	var floor_color := Color(0.14, 0.16, 0.21)
-	_add_box(_world, "ControlFloor", Vector3(10, 0.12, 8), Vector3(0, -0.06, 0), floor_color)
-	_add_box(_world, "ControlCeiling", Vector3(10, 0.12, 8), Vector3(0, 3.06, 0), Color(0.16, 0.18, 0.23))
-	_add_box(_world, "ControlWallL", Vector3(0.16, 3, 8), Vector3(-5, 1.5, 0), wall)
-	_add_box(_world, "ControlWallR", Vector3(0.16, 3, 8), Vector3(5, 1.5, 0), wall)
-	_add_box(_world, "ControlWallBack", Vector3(10, 3, 0.16), Vector3(0, 1.5, -4), wall)
-	_add_box(_world, "ControlWallFrontL", Vector3(4.1, 3, 0.16), Vector3(-2.95, 1.5, 4), wall)
-	_add_box(_world, "ControlWallFrontR", Vector3(4.1, 3, 0.16), Vector3(2.95, 1.5, 4), wall)
-	_add_box(_world, "ControlDoorLintel", Vector3(1.8, 0.5, 0.16), Vector3(0, 2.75, 4), wall)
+	var w := ROOM_HALF_WIDTH
+	var d := ROOM_HALF_DEPTH
+	var h := ROOM_HEIGHT
+	_add_box(_world, "ControlFloor", Vector3(w * 2.0, 0.12, d * 2.0), Vector3(0, -0.06, 0), floor_color)
+	# 天花底面正好在 ROOM_HEIGHT（净高 3.4m），避免“标 3.4 实际 3.28”。
+	_add_box(_world, "ControlCeiling", Vector3(w * 2.0, 0.12, d * 2.0), Vector3(0, h + 0.06, 0),
+		Color(0.16, 0.18, 0.23))
+	_add_box(_world, "ControlWallL", Vector3(0.16, h, d * 2.0), Vector3(-w, h * 0.5, 0), wall)
+	_add_box(_world, "ControlWallR", Vector3(0.16, h, d * 2.0), Vector3(w, h * 0.5, 0), wall)
+	_add_box(_world, "ControlWallBack", Vector3(w * 2.0, h, 0.16), Vector3(0, h * 0.5, -d), wall)
+	_add_box(_world, "ControlWallFrontL", Vector3(7.1, h, 0.16), Vector3(-4.45, h * 0.5, d), wall)
+	_add_box(_world, "ControlWallFrontR", Vector3(7.1, h, 0.16), Vector3(4.45, h * 0.5, d), wall)
+	# 门楣从门洞顶 2.4m 一直到天花底面 3.4m，不能留通缝。
+	_add_box(_world, "ControlDoorLintel", Vector3(1.8, h - 2.4, 0.16), Vector3(0, (h + 2.4) * 0.5, d), wall)
 
-	_add_box(_world, "MonitorBacking", Vector3(3.8, 2.45, 0.08), Vector3(0, 1.7, -3.92),
+	# 地台、地毯和侧面墙板，给大房间做出分区感。
+	_add_box(_world, "FloorInlay", Vector3(9.0, 0.02, 4.4), Vector3(0, 0.01, 0.6),
+		Color(0.10, 0.14, 0.2), false)
+	_add_box(_world, "EntryMat", Vector3(2.2, 0.02, 1.4), Vector3(0, 0.01, 4.9),
+		Color(0.09, 0.11, 0.15), false)
+	for side in [-1, 1]:
+		var side_name := "L" if side < 0 else "R"
+		_add_box(_world, "WallPanel" + side_name, Vector3(0.04, 1.7, 9.6),
+			Vector3(side * (w - 0.09), 1.55, 0), Color(0.2, 0.24, 0.31), false)
+		_add_box(_world, "WallTrim" + side_name, Vector3(0.05, 0.08, 9.6),
+			Vector3(side * (w - 0.1), 2.45, 0), Color(0.4, 0.56, 0.68), false)
+		_add_box(_world, "ServerRack" + side_name, Vector3(0.8, 2.0, 3.2),
+			Vector3(side * (w - 0.5), 1.0, -2.0), Color(0.11, 0.13, 0.18))
+		_add_box(_world, "RackLight" + side_name, Vector3(0.04, 0.06, 2.6),
+			Vector3(side * (w - 0.94), 1.65, -2.0), Color(0.2, 0.7, 1.0), false,
+			Color(0.1, 0.5, 0.9))
+
+	# 天花梁 + 顶部灯带，让房间有纵深。
+	for index in 3:
+		_add_box(_world, "CeilingBeam" + String.chr(65 + index), Vector3(w * 1.95, 0.14, 0.18),
+			Vector3(0, h - 0.22, -3.0 + index * 3.0), trim, false)
+	for side in [-1, 1]:
+		var side_name := "A" if side < 0 else "B"
+		_add_box(_world, "CeilingLight" + side_name, Vector3(2.4, 0.04, 1.1),
+			Vector3(side * 3.4, h - 0.34, -2.4), Color(0.8, 0.9, 1.0), false,
+			Color(0.5, 0.7, 1.0))
+
+	# 监控台和侧台。
+	_add_box(_world, "ConsoleDesk", Vector3(6.0, 0.8, 0.9), Vector3(0, 0.4, -5.0),
+		Color(0.18, 0.21, 0.28))
+	_add_box(_world, "ConsoleLip", Vector3(6.2, 0.06, 0.94), Vector3(0, 0.83, -5.0),
+		Color(0.42, 0.58, 0.7), false)
+	_add_box(_world, "ConsolePanel", Vector3(1.4, 0.5, 0.04), Vector3(-1.6, 0.52, -4.54),
+		Color(0.1, 0.5, 0.75), false, Color(0.05, 0.3, 0.5))
+	_add_box(_world, "SideConsoleL", Vector3(2.2, 0.75, 0.65), Vector3(-4.7, 0.375, -1.4),
+		Color(0.17, 0.2, 0.26))
+	_add_box(_world, "SideConsoleR", Vector3(2.2, 0.75, 0.65), Vector3(4.7, 0.375, -1.4),
+		Color(0.17, 0.2, 0.26))
+
+	# 立柱把大空间切成“入口 / 工作区 / 屏幕区”。
+	_add_box(_world, "PillarL", Vector3(0.5, h, 0.5), Vector3(-6.2, h * 0.5, -3.6), trim)
+	_add_box(_world, "PillarR", Vector3(0.5, h, 0.5), Vector3(6.2, h * 0.5, -3.6), trim)
+
+	_add_box(_world, "MonitorBacking", Vector3(3.1, 1.8, 0.08), Vector3(0, 1.95, -5.92),
 		Color(0.03, 0.04, 0.06), false)
-	_add_label3d(_world, "监控台", Vector3(0, 2.98, -3.82), 40, Color(0.45, 0.78, 1.0))
-	_add_box(_world, "ScrollBacking", Vector3(1.8, 1.2, 0.08), Vector3(3.2, 1.7, -3.92),
+	# 滚动屏放到监控屏正上方，保证坐姿 16:9 / 4:3 / 方屏都能看见。
+	_add_box(_world, "ScrollBacking", Vector3(1.5, 0.56, 0.08), Vector3(0, 3.12, -5.92),
 		Color(0.03, 0.04, 0.06), false)
-	_add_label3d(_world, "滚动屏", Vector3(3.2, 2.42, -3.82), 30, Color(0.4, 0.9, 0.85))
 
-	# 椅子
-	_add_box(_world, "ChairSeat", Vector3(0.8, 0.12, 0.8), Vector3(0, 0.55, CHAIR_POS.z), Color(0.18, 0.2, 0.26))
-	_add_box(_world, "ChairBack", Vector3(0.8, 0.8, 0.12), Vector3(0, 0.95, CHAIR_POS.z - 0.34), Color(0.18, 0.2, 0.26))
-	_add_box(_world, "ChairBase", Vector3(0.22, 0.55, 0.22), Vector3(0, 0.27, CHAIR_POS.z), Color(0.1, 0.11, 0.15))
+	# 椅子：椅背朝门（+Z），人坐下后面向屏幕（-Z）。
+	_add_box(_world, "ChairSeat", Vector3(0.9, 0.12, 0.9), Vector3(0, 0.55, CHAIR_POS.z),
+		Color(0.18, 0.2, 0.26))
+	_add_box(_world, "ChairBack", Vector3(0.9, 0.9, 0.12), Vector3(0, 1.0, CHAIR_POS.z + 0.42),
+		Color(0.18, 0.2, 0.26))
+	_add_box(_world, "ChairBase", Vector3(0.22, 0.55, 0.22), Vector3(0, 0.27, CHAIR_POS.z),
+		Color(0.1, 0.11, 0.15))
+	for side in [-1, 1]:
+		_add_box(_world, "ChairArm" + ("L" if side < 0 else "R"),
+			Vector3(0.08, 0.08, 0.7), Vector3(side * 0.48, 0.76, CHAIR_POS.z),
+			Color(0.22, 0.25, 0.31))
 
-	# 锁着的门
+	# 锁着的门。
 	_door = Node3D.new()
 	_door.name = "Door"
 	_door.position = DOOR_POS
@@ -606,7 +669,11 @@ func _build_control_room() -> void:
 	door_shape.position = Vector3(0, 1.2, 0)
 	_door_body.add_child(door_shape)
 	_door.add_child(_door_body)
-	_add_label3d(_world, "LOCKED", Vector3(0, 2.55, 3.9), 24, Color(0.95, 0.5, 0.4))
+	_add_box(_world, "DoorFrameL", Vector3(0.12, 2.4, 0.2), Vector3(-0.95, 1.2, d), trim)
+	_add_box(_world, "DoorFrameR", Vector3(0.12, 2.4, 0.2), Vector3(0.95, 1.2, d), trim)
+	# 门外留一小段落脚平台，避免玩家刚出门就踩空。
+	_add_box(_world, "ExitLanding", Vector3(4.0, 0.12, 2.4), Vector3(0, -0.06, 7.2), floor_color)
+	_add_label3d(_world, "LOCKED", Vector3(0, 2.55, 5.88), 24, Color(0.95, 0.5, 0.4))
 
 
 func _build_observation_rooms() -> void:
@@ -633,6 +700,23 @@ func _build_observation_rooms() -> void:
 	_add_box(_world, "CrateA", Vector3(1.3, 1.0, 1.3), Vector3(-8.2, 0.5, -20.2), Color(0.28, 0.25, 0.22))
 	_add_box(_world, "DeskB", Vector3(1.6, 0.9, 1.0), Vector3(8.1, 0.45, -20.1), Color(0.24, 0.27, 0.33))
 	_add_box(_world, "TableA", Vector3(2.4, 0.8, 1.2), Vector3(-2.4, 0.4, -15.2), Color(0.25, 0.23, 0.27))
+
+	# 让观察房间也有家具和活动空间，而不是空盒子。
+	for room in ["A", "B"]:
+		var center_x := -5.0 if room == "A" else 5.0
+		var side := -1.0 if room == "A" else 1.0
+		_add_box(_world, "Rug" + room, Vector3(5.8, 0.02, 4.8),
+			Vector3(center_x, 0.01, -18), Color(0.18, 0.17, 0.22), false)
+		_add_box(_world, "Shelf" + room, Vector3(0.6, 2.2, 3.0),
+			Vector3(center_x + side * 3.5, 1.1, -16.5), Color(0.3, 0.25, 0.2))
+		_add_box(_world, "Sofa" + room, Vector3(2.4, 0.8, 0.9),
+			Vector3(center_x + side * 1.8, 0.4, -15.0), Color(0.22, 0.27, 0.34))
+		_add_box(_world, "Cabinet" + room, Vector3(1.2, 1.6, 0.6),
+			Vector3(center_x - side * 3.5, 0.8, -21.0), Color(0.2, 0.23, 0.29))
+		_add_box(_world, "Planter" + room, Vector3(0.5, 0.7, 0.5),
+			Vector3(center_x - side * 4.0, 0.35, -14.8), Color(0.16, 0.28, 0.22))
+		_add_box(_world, "RoomPanel" + room, Vector3(0.04, 1.4, 5.0),
+			Vector3(center_x + side * 3.92, 1.4, -18.0), Color(0.3, 0.33, 0.4), false)
 
 
 func _build_clues() -> void:
@@ -663,6 +747,9 @@ func _build_clues() -> void:
 		node.add_child(label)
 
 		var body := StaticBody3D.new()
+		# 线索是可拾取物，不参与人物/视线碰撞；否则 NPC 的射线会命中线索自身。
+		body.collision_layer = 0
+		body.collision_mask = 0
 		var shape := CollisionShape3D.new()
 		var box_shape := BoxShape3D.new()
 		box_shape.size = Vector3(0.5, 0.5, 0.5)
@@ -765,7 +852,7 @@ func _build_screens() -> void:
 
 	scroll_viewport = SubViewport.new()
 	scroll_viewport.name = "ScrollViewport"
-	scroll_viewport.size = Vector2i(640, 400)
+	scroll_viewport.size = Vector2i(640, 270)
 	scroll_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(scroll_viewport)
 	scroll_ui = SCROLL_UI_SCRIPT.new()
@@ -798,7 +885,7 @@ func _build_player() -> void:
 	player = PLAYER_SCRIPT.new()
 	player.name = "Player"
 	_world.add_child(player)
-	player.global_position = Vector3(1.7, 0, 3.0)
+	player.global_position = Vector3(1.2, 0, -1.2)
 	player.configure(CHAIR_POS, STAND_POS, SCREEN_POS, DOOR_POS)
 	player.seat_changed.connect(_on_seat_changed)
 	player.interaction.connect(_on_interaction)
@@ -874,6 +961,7 @@ func _add_box(parent: Node3D, box_name: String, size: Vector3, position: Vector3
 	parent.add_child(mesh_instance)
 	if collision:
 		var body := StaticBody3D.new()
+		body.name = box_name + "Body"
 		body.position = position
 		var shape := CollisionShape3D.new()
 		var box_shape := BoxShape3D.new()
