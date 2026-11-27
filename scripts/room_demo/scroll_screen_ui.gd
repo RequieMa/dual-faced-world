@@ -11,7 +11,7 @@ var _result: Label
 
 
 func setup() -> void:
-	size = Vector2(640, 400)
+	size = Vector2(640, 270)
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.02, 0.06, 0.065, 1.0)

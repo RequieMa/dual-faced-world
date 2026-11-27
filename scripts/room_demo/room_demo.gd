@@ -36,10 +36,11 @@ const CAMERA_COOLDOWN := 8.0
 const SIGNAL_RANGE := 22.0
 
 ## 墙上的物理屏幕（内容来自 SubViewport，不是 2D 覆盖层）。
-const MONITOR_CENTER := Vector3(0, 2.0, -5.81)
-const MONITOR_SIZE := Vector2(3.8, 1.5)
+const MONITOR_CENTER := Vector3(0, 1.95, -5.81)
+# monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
+const MONITOR_SIZE := Vector2(2.72, 1.7)
 const SCROLL_CENTER := Vector3(0, 3.12, -5.81)
-const SCROLL_SIZE := Vector2(1.2, 0.5)
+const SCROLL_SIZE := Vector2(1.2, 0.506)
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -528,7 +529,7 @@ func _update_scroll_drop_overlay() -> void:
 		max_point.x = maxf(max_point.x, screen_point.x)
 		max_point.y = maxf(max_point.y, screen_point.y)
 	var rect := Rect2(min_point, max_point - min_point)
-	if rect.size.x < 10.0 or rect.size.y < 10.0:
+	if rect.size.x < 4.0 or rect.size.y < 4.0:
 		ui.set_scroll_drop_visible(false)
 		return
 	ui.set_scroll_drop_rect(rect)
@@ -634,7 +635,7 @@ func _build_control_room() -> void:
 	_add_box(_world, "PillarL", Vector3(0.5, h, 0.5), Vector3(-6.2, h * 0.5, -3.6), trim)
 	_add_box(_world, "PillarR", Vector3(0.5, h, 0.5), Vector3(6.2, h * 0.5, -3.6), trim)
 
-	_add_box(_world, "MonitorBacking", Vector3(4.2, 1.7, 0.08), Vector3(0, 2.0, -5.92),
+	_add_box(_world, "MonitorBacking", Vector3(3.1, 1.8, 0.08), Vector3(0, 1.95, -5.92),
 		Color(0.03, 0.04, 0.06), false)
 	# 滚动屏放到监控屏正上方，保证坐姿 16:9 / 4:3 / 方屏都能看见。
 	_add_box(_world, "ScrollBacking", Vector3(1.5, 0.56, 0.08), Vector3(0, 3.12, -5.92),

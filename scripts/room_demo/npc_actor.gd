@@ -361,7 +361,7 @@ func _has_line_of_sight(origin: Vector3, point: Vector3, distance: float) -> boo
 	if hit.is_empty():
 		return true
 	# 命中点明显在目标之前 = 被挡住；贴脸的端点/地面不算遮挡。
-	return origin.distance_to(hit["position"]) >= distance - 0.05
+	return origin.distance_to(hit["position"]) >= distance - 0.02
 
 
 ## 大部分时间看正前方，间歇性左右/上下扫视，幅度不大。
@@ -447,8 +447,8 @@ func _ensure_visual() -> void:
 	_spotlight.spot_angle_attenuation = 1.0
 	_spotlight.shadow_enabled = true
 	_spotlight.shadow_bias = 0.02
-	# 从身体前方发光，避免被 NPC 自己的胶囊挡住。
-	_spotlight.position = Vector3(0, 0, -0.45)
+	# 保持在眼位；依靠 body/head/avatar 关闭投影避免自遮挡，避免灯跑进墙里。
+	_spotlight.position = Vector3.ZERO
 	_vision_pivot.add_child(_spotlight)
 
 	# 只画很短的一段锥体做方向提示，避免遮住监控画面；真实遮挡靠 spotlight 阴影。
@@ -532,10 +532,19 @@ func attach_avatar(avatar: Node3D) -> void:
 	else:
 		_visual_root.add_child(avatar)
 	_avatar = avatar
+	_disable_shadow_casting(avatar)
 	if _body_mesh != null:
 		_body_mesh.visible = false
 	if _head_mesh != null:
 		_head_mesh.visible = false
+
+
+## avatar 的 GLB 网格也不投影，避免眼位 spotlight 被自身模型挡住。
+func _disable_shadow_casting(node: Node) -> void:
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children():
+		_disable_shadow_casting(child)
 
 
 func has_avatar() -> bool:

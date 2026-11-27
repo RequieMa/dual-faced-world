@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 27
+const EXPECTED_CHECKS := 31
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -37,6 +37,21 @@ func _initialize() -> void:
 	_check("坐下后滚动屏在视野内",
 		seated_camera.is_position_in_frustum(Vector3(0, 3.12, -5.81)),
 		str(seated_camera.global_transform))
+	var monitor_mesh := demo.find_child("MonitorScreen", true, false) as MeshInstance3D
+	var monitor_quad := monitor_mesh.mesh as QuadMesh if monitor_mesh != null else null
+	_check("监控屏与 viewport 同比例",
+		monitor_quad != null and is_equal_approx(monitor_quad.size.x / monitor_quad.size.y,
+			float(demo.monitor_viewport.size.x) / float(demo.monitor_viewport.size.y)),
+		"" if monitor_quad == null else "quad=%.3f" % (monitor_quad.size.x / monitor_quad.size.y))
+	_check("滚动屏 UI 高度适配 viewport",
+		is_equal_approx(demo.scroll_ui.size.y, float(demo.scroll_viewport.size.y)),
+		"ui=%.1f viewport=%d" % [demo.scroll_ui.size.y, demo.scroll_viewport.size.y])
+	demo.tick(0.1)
+	var scroll_drop = demo.ui._scroll_drop as Control
+	_check("滚动屏拖放区可见", scroll_drop != null and scroll_drop.visible)
+	_check("滚动屏拖放区有有效矩形",
+		scroll_drop != null and scroll_drop.get_global_rect().size.x > 10.0,
+		"" if scroll_drop == null else str(scroll_drop.get_global_rect()))
 	demo.set_seated(false)
 
 	# 3) 视锥是 spotlight，带阴影、角度/距离收小。
