@@ -17,6 +17,7 @@ const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
 const LENS_SHADER := preload("res://shaders/lens_distortion.gdshader")
+const LENS_STRENGTH := 0.045
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const CAMERA_SESSION_SCRIPT := preload("res://scripts/camera/camera_session.gd")
 
@@ -27,9 +28,9 @@ const LUMINE_GLB := "res://external-assets/generated/lumine.glb"
 const ROOM_HALF_WIDTH := 8.0
 const ROOM_HALF_DEPTH := 6.0
 const ROOM_HEIGHT := 3.4
-const CHAIR_POS := Vector3(0, 0, -4.1)
-const STAND_POS := Vector3(0, 0, -2.3)
-const SCREEN_POS := Vector3(0, 1.75, -5.75)
+const CHAIR_POS := Vector3(0, 0, -4.2)
+const STAND_POS := Vector3(0, 0, -2.4)
+const SCREEN_POS := Vector3(0, 1.55, -5.75)
 const DOOR_POS := Vector3(0, 0, 6.0)
 const DOOR_CODE := "A-317"
 const CAMERA_DWELL := 45.0
@@ -37,7 +38,7 @@ const CAMERA_COOLDOWN := 8.0
 const SIGNAL_RANGE := 22.0
 
 ## 墙上的物理屏幕（内容来自 SubViewport，不是 2D 覆盖层）。
-const MONITOR_CENTER := Vector3(0, 1.75, -5.81)
+const MONITOR_CENTER := Vector3(0, 1.55, -5.81)
 # monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
 const MONITOR_SIZE := Vector2(3.52, 2.2)
 
@@ -67,7 +68,6 @@ var monitor_ui: Control = null
 var scroll_viewport: SubViewport = null
 var scroll_ui: Control = null
 var monitor_mesh: MeshInstance3D = null
-var scroll_mesh: MeshInstance3D = null
 
 var selected_feed := ""
 var door_unlocked := false
@@ -455,9 +455,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
-	if player != null and player.seated and not selected_feed.is_empty() \
+	if player != null and player.seated \
 			and (key.keycode == KEY_ESCAPE or key.keycode == KEY_BACKSPACE):
-		close_feed()
+		if selected_feed.is_empty():
+			set_seated(false)
+		else:
+			close_feed()
 		get_viewport().set_input_as_handled()
 		return
 	if key.keycode == KEY_S and player != null and player.seated:
@@ -468,6 +471,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## 把鼠标事件按 3D 大屏的命中点换算成 SubViewport 像素，转发给屏幕里的 UI。
+## 屏幕后处理把 3D 画面向外弯过；鼠标射线前先反算回源画面坐标。
+func lens_source_position(screen_position: Vector2) -> Vector2:
+	var size := get_viewport().get_visible_rect().size
+	if size.x <= 0.0 or size.y <= 0.0:
+		return screen_position
+	var uv := screen_position / size
+	var p := uv - Vector2(0.5, 0.5)
+	var warped := uv + p * (LENS_STRENGTH * p.length_squared())
+	return warped * size
+
+
 func _forward_mouse_to_monitor(event: InputEvent) -> bool:
 	if monitor_viewport == null or player == null or player.camera == null:
 		return false
@@ -480,6 +494,7 @@ func _forward_mouse_to_monitor(event: InputEvent) -> bool:
 		mouse_position = button.position
 	else:
 		return false
+	mouse_position = lens_source_position(mouse_position)
 	var camera: Camera3D = player.camera
 	var from: Vector3 = camera.project_ray_origin(mouse_position)
 	var direction: Vector3 = camera.project_ray_normal(mouse_position)
@@ -602,11 +617,11 @@ func _build_control_room() -> void:
 			Color(0.5, 0.7, 1.0))
 
 	# 监控台和侧台。
-	_add_box(_world, "ConsoleDesk", Vector3(6.0, 0.55, 0.9), Vector3(0, 0.275, -5.0),
+	_add_box(_world, "ConsoleDesk", Vector3(6.0, 0.4, 0.9), Vector3(0, 0.2, -5.0),
 		Color(0.18, 0.21, 0.28))
-	_add_box(_world, "ConsoleLip", Vector3(6.2, 0.06, 0.94), Vector3(0, 0.58, -5.0),
+	_add_box(_world, "ConsoleLip", Vector3(6.2, 0.05, 0.94), Vector3(0, 0.43, -5.0),
 		Color(0.42, 0.58, 0.7), false)
-	_add_box(_world, "ConsolePanel", Vector3(1.4, 0.35, 0.04), Vector3(-1.6, 0.38, -4.54),
+	_add_box(_world, "ConsolePanel", Vector3(1.4, 0.28, 0.04), Vector3(-1.6, 0.26, -4.54),
 		Color(0.1, 0.5, 0.75), false, Color(0.05, 0.3, 0.5))
 	_add_box(_world, "SideConsoleL", Vector3(2.2, 0.75, 0.65), Vector3(-4.7, 0.375, -1.4),
 		Color(0.17, 0.2, 0.26))
@@ -617,7 +632,7 @@ func _build_control_room() -> void:
 	_add_box(_world, "PillarL", Vector3(0.5, h, 0.5), Vector3(-6.2, h * 0.5, -3.6), trim)
 	_add_box(_world, "PillarR", Vector3(0.5, h, 0.5), Vector3(6.2, h * 0.5, -3.6), trim)
 
-	_add_box(_world, "MonitorBacking", Vector3(3.9, 2.4, 0.08), Vector3(0, 1.75, -5.92),
+	_add_box(_world, "MonitorBacking", Vector3(3.9, 2.4, 0.08), Vector3(0, 1.55, -5.92),
 		Color(0.03, 0.04, 0.06), false)
 
 	# 椅子：椅背朝门（+Z），人坐下后面向屏幕（-Z）。
@@ -920,7 +935,7 @@ func _build_lens_distortion() -> void:
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var material := ShaderMaterial.new()
 	material.shader = LENS_SHADER
-	material.set_shader_parameter("strength", 0.045)
+	material.set_shader_parameter("strength", LENS_STRENGTH)
 	rect.material = material
 	layer.add_child(rect)
 

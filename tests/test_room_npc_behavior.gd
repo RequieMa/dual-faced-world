@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 35
+const EXPECTED_CHECKS := 38
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -37,14 +37,27 @@ func _initialize() -> void:
 	var monitor_mesh := demo.find_child("MonitorScreen", true, false) as MeshInstance3D
 	var monitor_quad := monitor_mesh.mesh as QuadMesh if monitor_mesh != null else null
 	if monitor_quad != null:
-		var distance := seated_camera.global_position.distance_to(Vector3(0, 1.75, -5.81))
+		var distance := seated_camera.global_position.distance_to(Vector3(0, 1.55, -5.81))
 		var angular := rad_to_deg(2.0 * atan((monitor_quad.size.y * 0.5) / distance))
 		var ratio := angular / seated_camera.fov
-		_check("坐下后显示屏高度约占视野 85%+", ratio >= 0.85,
+		_check("坐下后显示屏高度约占视野 88%+", ratio >= 0.88,
 			"ratio=%.3f angle=%.1f fov=%.1f" % [ratio, angular, seated_camera.fov])
+		_check("屏幕上下边都在垂直视野内",
+			seated_camera.is_position_in_frustum(Vector3(0, 2.65, -5.81))
+			and seated_camera.is_position_in_frustum(Vector3(0, 0.45, -5.81)))
 	_check("坐下后滚动屏面板可见", demo.ui.is_scroll_visible())
 	var lens := demo.find_child("LensRect", true, false) as ColorRect
 	_check("第一人称镜头畸变存在", lens != null and lens.material is ShaderMaterial)
+	var view_size: Vector2 = demo.get_viewport().get_visible_rect().size
+	var screen_center: Vector2 = view_size * 0.5
+	var screen_edge: Vector2 = Vector2(view_size.x * 0.9, view_size.y * 0.5)
+	var lens_center: Vector2 = demo.lens_source_position(screen_center)
+	var lens_edge: Vector2 = demo.lens_source_position(screen_edge)
+	_check("镜头畸变中心不偏移", lens_center.distance_to(screen_center) < 0.5,
+		str(lens_center))
+	_check("镜头畸变边缘鼠标向外补偿",
+		lens_edge.distance_to(screen_center) > screen_edge.distance_to(screen_center),
+		str(lens_edge))
 	_check("监控屏与 viewport 同比例",
 		monitor_quad != null and is_equal_approx(monitor_quad.size.x / monitor_quad.size.y,
 			float(demo.monitor_viewport.size.x) / float(demo.monitor_viewport.size.y)),
