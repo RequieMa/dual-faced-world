@@ -1,10 +1,13 @@
 extends CharacterBody3D
-## 观察房间里的两个 NPC（primitive 占位或 GLB avatar）：
-## - `reckless`（莽撞）：跑得比谨慎快、视锥短；收到激光会冲过去，找不到线索就跑开，连续跑空后会短时间无视信号；
-## - `cautious`（谨慎）：走得慢、视锥长；会顺着激光慢慢走过去并四处翻找，不会因为跑空而忽略信号。
+## 观察房间里的两个 NPC（primitive 占位或 GLB avatar）。
 ##
-## 用 CharacterBody3D + move_and_slide 移动，墙体/家具的 StaticBody3D 会挡住 NPC；
-## 不再直接改 global_position，因此不会穿墙。宿主每帧 tick(delta)。
+## - 视觉：每台 NPC 用带阴影的 SpotLight3D 做视锥（阴影保证光只停在第一个面）；
+## - 感知：3D 锥角 + 射线遮挡，墙/家具后的目标不可见；
+## - 行为：走走停停，停下时视线偶尔左右/上下扫视；
+## - 移动：加速/减速 + 身体轻微起伏，不是瞬间平移。
+##
+## 用 CharacterBody3D + move_and_slide 移动，墙体/家具的 StaticBody3D 会挡住 NPC。
+## 宿主每帧 tick(delta)；测试可读 get_state() 的 look/moving 字段。
 
 signal clue_collected(clue_id: String, position: Vector3)
 signal state_changed(state: String)
@@ -18,16 +21,22 @@ const STATE_SEEK := "seek"
 const STATE_SEARCH := "search"
 
 const ARRIVE_EPSILON := 0.08
-## NPC 只会主动去捡「自己走到很近、且看得到」的线索；远处的要靠玩家用激光/截图引导。
 const AUTO_SEEK_RADIUS := 2.0
+const NPC_ACCEL := 5.0
+const NPC_DECEL := 8.0
+const EYE_HEIGHT := 1.45
+const WALK_BOB_HEIGHT := 0.018
+const WALK_BOB_FREQ := 7.0
+const LOOK_YAW_DEG := 24.0
+const LOOK_PITCH_DEG := 7.0
 
 var npc_id := ""
 var personality := PERSONALITY_CAUTIOUS
 var state := STATE_WANDER
 var speed := 1.2
 var signal_range := 20.0
-var vision_range := 8.0
-var vision_half_angle := 45.0
+var vision_range := 6.0
+var vision_half_angle := 30.0
 
 var _waypoints: Array[Vector3] = []
 var _target := Vector3.ZERO
@@ -39,10 +48,25 @@ var _wasted := 0
 var _signal_active := false
 var _seeking_clue_id := ""
 var _visual_built := false
-var _cone: MeshInstance3D = null
+
+var _visual_root: Node3D = null
+var _vision_pivot: Node3D = null
+var _spotlight: SpotLight3D = null
+var _cone_visual: MeshInstance3D = null
+var _vision_length := 0.0
 var _body_mesh: MeshInstance3D = null
 var _head_mesh: MeshInstance3D = null
 var _avatar: Node3D = null
+var _walk_phase := 0.0
+var _look_yaw := 0.0
+var _look_pitch := 0.0
+var _look_target_yaw := 0.0
+var _look_target_pitch := 0.0
+var _look_timer := 0.0
+
+var _signal_search_time := 1.2
+var _waste_limit := 3
+var _ignore_seconds := 12.0
 
 
 func configure(id: String, personality_name: String, start_pos: Vector3,
@@ -58,37 +82,38 @@ func configure(id: String, personality_name: String, start_pos: Vector3,
 	if _waypoints.is_empty():
 		_waypoints.append(start_pos)
 	_target = _waypoints[0]
-	state = STATE_WANDER
-	_state_time = 0.0
+	state = STATE_PAUSE
+	_state_time = randf_range(0.8, 2.0)
 	_search_remaining = 0.0
 	_now = 0.0
 	_ignore_until = 0.0
 	_wasted = 0
 	_signal_active = false
 	_seeking_clue_id = ""
+	_walk_phase = 0.0
+	_look_yaw = 0.0
+	_look_pitch = 0.0
+	_look_target_yaw = 0.0
+	_look_target_pitch = 0.0
+	_look_timer = randf_range(1.0, 2.0)
 	if personality == PERSONALITY_RECKLESS:
 		speed = 1.65
-		vision_range = 6.0
-		vision_half_angle = 50.0
+		vision_range = 5.5
+		vision_half_angle = 32.0
 		signal_range = 12.0
 		_signal_search_time = 1.2
 		_waste_limit = 3
 		_ignore_seconds = 12.0
 	else:
 		speed = 0.60
-		vision_range = 8.5
-		vision_half_angle = 55.0
+		vision_range = 6.5
+		vision_half_angle = 34.0
 		signal_range = 15.0
 		_signal_search_time = 4.0
 		_waste_limit = 0
 		_ignore_seconds = 0.0
 	_ensure_visual()
-	_update_cone_visual()
-
-
-var _signal_search_time := 1.2
-var _waste_limit := 3
-var _ignore_seconds := 12.0
+	_update_vision_visual()
 
 
 func _ready() -> void:
@@ -99,7 +124,8 @@ func tick(delta: float, clues: Array) -> void:
 	if delta <= 0.0:
 		return
 	_now += delta
-	_update_cone_visual()
+	_update_vision_look(delta)
+	_update_vision_visual()
 	match state:
 		STATE_WANDER:
 			_tick_wander(delta, clues)
@@ -109,6 +135,7 @@ func tick(delta: float, clues: Array) -> void:
 			_tick_seek(delta, clues)
 		STATE_SEARCH:
 			_tick_search(delta, clues)
+	_update_walk_animation(delta)
 
 
 ## 收到玩家激光/截图信号。超出范围或仍在“忽略期”返回 false。
@@ -125,18 +152,18 @@ func receive_signal(point: Vector3, now: float = -1.0) -> bool:
 	return true
 
 
+## 目标点是否在视锥内，且到目标点的射线不被墙/家具挡住。
 func sees_point(point: Vector3) -> bool:
-	var origin := global_position + Vector3(0, 1.4, 0)
+	var origin := _vision_origin()
 	var offset := point - origin
 	var distance := offset.length()
 	if distance > vision_range or distance <= 0.01:
 		return false
-	var forward := -global_transform.basis.z
-	forward.y = 0.0
-	if forward.length_squared() <= 0.001:
+	var forward := _vision_forward()
+	var angle := rad_to_deg(forward.angle_to(offset.normalized()))
+	if angle > vision_half_angle:
 		return false
-	var angle := rad_to_deg(forward.normalized().angle_to(Vector3(offset.x, 0.0, offset.z).normalized()))
-	return angle <= vision_half_angle
+	return _has_line_of_sight(origin, point, distance)
 
 
 func is_ignoring_signals() -> bool:
@@ -151,8 +178,14 @@ func get_state() -> Dictionary:
 		"position": global_position,
 		"target": _target,
 		"speed": speed,
+		"moving_speed": Vector2(velocity.x, velocity.z).length(),
+		"look_yaw": _look_yaw,
+		"look_pitch": _look_pitch,
 		"wasted_signals": _wasted,
 		"ignoring": is_ignoring_signals(),
+		"vision_range": vision_range,
+		"vision_half_angle": vision_half_angle,
+		"vision_length": _vision_length,
 	}
 
 
@@ -162,14 +195,15 @@ func _tick_wander(delta: float, clues: Array) -> void:
 	if _try_seek_visible_clue(clues):
 		return
 	if _move_toward(_target, speed, delta):
-		_state_time = randf_range(0.6, 1.8) if personality == PERSONALITY_RECKLESS else randf_range(1.0, 2.5)
+		_state_time = randf_range(2.2, 4.5) if personality == PERSONALITY_RECKLESS \
+			else randf_range(3.0, 5.5)
 		_set_state(STATE_PAUSE)
 
 
 func _tick_pause(delta: float, clues: Array) -> void:
 	if _try_seek_visible_clue(clues):
 		return
-	rotation.y += delta * (0.4 if personality == PERSONALITY_CAUTIOUS else 0.8)
+	_decelerate(delta)
 	_state_time -= delta
 	if _state_time <= 0.0:
 		_pick_waypoint()
@@ -184,10 +218,10 @@ func _tick_seek(delta: float, clues: Array) -> void:
 
 func _tick_search(delta: float, clues: Array) -> void:
 	var near := _nearby_clue(clues, 2.2)
-	if not near.is_empty():
+	if not near.is_empty() and _can_reach_clue(near):
 		_collect_clue(near)
 		return
-	rotation.y += delta * 1.6
+	_decelerate(delta)
 	_search_remaining -= delta
 	if _search_remaining > 0.0:
 		return
@@ -217,6 +251,13 @@ func _try_seek_visible_clue(clues: Array) -> bool:
 	return false
 
 
+func _can_reach_clue(clue: Dictionary) -> bool:
+	var point: Vector3 = clue.get("position", Vector3.ZERO)
+	var origin := _vision_origin()
+	var distance := origin.distance_to(point)
+	return distance > 0.01 and _has_line_of_sight(origin, point, distance)
+
+
 func _nearby_clue(clues: Array, radius: float) -> Dictionary:
 	for clue in clues:
 		if bool(clue.get("collected", false)):
@@ -239,24 +280,31 @@ func _collect_clue(clue: Dictionary) -> void:
 	clue_collected.emit(clue_id, point)
 
 
+## 带加速/减速的移动；被墙/家具挡住时返回 true，让状态机换目标。
 func _move_toward(point: Vector3, move_speed: float, delta: float) -> bool:
 	var offset := point - global_position
 	offset.y = 0.0
 	var distance := offset.length()
 	if distance <= ARRIVE_EPSILON:
-		velocity = Vector3.ZERO
+		_decelerate(delta)
 		return true
 	_face_toward(point)
 	var direction := offset.normalized()
-	velocity = Vector3(direction.x * move_speed, 0.0, direction.z * move_speed)
+	velocity.x = move_toward(velocity.x, direction.x * move_speed, NPC_ACCEL * delta)
+	velocity.z = move_toward(velocity.z, direction.z * move_speed, NPC_ACCEL * delta)
 	var before := global_position
 	move_and_slide()
 	var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
 	if moved < 0.0001:
-		# 墙体/家具挡住去路：当作“到不了”，让状态机进入搜索/换路，避免永远贴着墙。
 		velocity = Vector3.ZERO
 		return true
 	return distance - moved <= ARRIVE_EPSILON
+
+
+func _decelerate(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, NPC_DECEL * delta)
+	velocity.z = move_toward(velocity.z, 0.0, NPC_DECEL * delta)
+	move_and_slide()
 
 
 func _face_toward(point: Vector3) -> void:
@@ -282,6 +330,59 @@ func _set_state(next_state: String) -> void:
 	state_changed.emit(state)
 
 
+# --- 视线/扫视 ---------------------------------------------------------------
+
+func _vision_origin() -> Vector3:
+	if _vision_pivot != null:
+		return _vision_pivot.global_position
+	return global_position + Vector3(0, EYE_HEIGHT, 0)
+
+
+func _vision_forward() -> Vector3:
+	if _vision_pivot != null:
+		return -_vision_pivot.global_transform.basis.z.normalized()
+	var flat := -global_transform.basis.z
+	flat.y = 0.0
+	return flat.normalized()
+
+
+func _has_line_of_sight(origin: Vector3, point: Vector3, distance: float) -> bool:
+	if not is_inside_tree():
+		return true
+	var world := get_world_3d()
+	if world == null:
+		return true
+	var space := world.direct_space_state
+	if space == null:
+		return true
+	var query := PhysicsRayQueryParameters3D.create(origin, point)
+	query.exclude = [get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return true
+	# 命中点明显在目标之前 = 被挡住；贴脸的端点/地面不算遮挡。
+	return origin.distance_to(hit["position"]) >= distance - 0.05
+
+
+## 大部分时间看正前方，间歇性左右/上下扫视，幅度不大。
+func _update_vision_look(delta: float) -> void:
+	_look_timer -= delta
+	if _look_timer <= 0.0:
+		if randf() < 0.62:
+			_look_target_yaw = 0.0
+			_look_target_pitch = 0.0
+			_look_timer = randf_range(2.0, 4.0)
+		else:
+			_look_target_yaw = deg_to_rad(randf_range(-LOOK_YAW_DEG, LOOK_YAW_DEG))
+			_look_target_pitch = deg_to_rad(randf_range(-LOOK_PITCH_DEG, LOOK_PITCH_DEG))
+			_look_timer = randf_range(0.9, 1.8)
+	var weight := clampf(delta * 4.0, 0.0, 1.0)
+	_look_yaw = lerp_angle(_look_yaw, _look_target_yaw, weight)
+	_look_pitch = lerpf(_look_pitch, _look_target_pitch, weight)
+	if _vision_pivot != null:
+		_vision_pivot.rotation = Vector3(_look_pitch, _look_yaw, 0.0)
+
+
 # --- 视觉 ---------------------------------------------------------------------
 
 func _ensure_visual() -> void:
@@ -290,6 +391,11 @@ func _ensure_visual() -> void:
 	_visual_built = true
 	var body_color := Color(0.9, 0.45, 0.2) if personality == PERSONALITY_RECKLESS \
 		else Color(0.25, 0.65, 0.9)
+
+	_visual_root = Node3D.new()
+	_visual_root.name = "Visual"
+	add_child(_visual_root)
+
 	var collision := CollisionShape3D.new()
 	collision.name = "NpcCollision"
 	var capsule_shape := CapsuleShape3D.new()
@@ -306,7 +412,8 @@ func _ensure_visual() -> void:
 	_body_mesh.mesh = capsule
 	_body_mesh.position.y = 0.9
 	_body_mesh.material_override = _material(body_color)
-	add_child(_body_mesh)
+	_body_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_visual_root.add_child(_body_mesh)
 
 	_head_mesh = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
@@ -315,7 +422,8 @@ func _ensure_visual() -> void:
 	_head_mesh.mesh = sphere
 	_head_mesh.position.y = 1.72
 	_head_mesh.material_override = _material(body_color.lightened(0.2))
-	add_child(_head_mesh)
+	_head_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_visual_root.add_child(_head_mesh)
 
 	var label := Label3D.new()
 	label.text = "%s（%s）" % [npc_id, "莽撞" if personality == PERSONALITY_RECKLESS else "谨慎"]
@@ -323,34 +431,107 @@ func _ensure_visual() -> void:
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.font_size = 36
 	label.modulate = body_color
-	add_child(label)
+	_visual_root.add_child(label)
 
-	_cone = MeshInstance3D.new()
+	_vision_pivot = Node3D.new()
+	_vision_pivot.name = "VisionPivot"
+	_vision_pivot.position = Vector3(0, EYE_HEIGHT, 0)
+	add_child(_vision_pivot)
+
+	_spotlight = SpotLight3D.new()
+	_spotlight.name = "VisionSpot"
+	_spotlight.light_color = body_color.lightened(0.25)
+	_spotlight.light_energy = 2.0
+	_spotlight.spot_range = vision_range
+	_spotlight.spot_angle = vision_half_angle * 2.0
+	_spotlight.spot_angle_attenuation = 1.0
+	_spotlight.shadow_enabled = true
+	_spotlight.shadow_bias = 0.02
+	# 从身体前方发光，避免被 NPC 自己的胶囊挡住。
+	_spotlight.position = Vector3(0, 0, -0.45)
+	_vision_pivot.add_child(_spotlight)
+
+	# 只画很短的一段锥体做方向提示，避免遮住监控画面；真实遮挡靠 spotlight 阴影。
+	_cone_visual = MeshInstance3D.new()
+	_cone_visual.name = "VisionCone"
 	var cone_mesh := CylinderMesh.new()
-	cone_mesh.radial_segments = 20
+	cone_mesh.height = 1.0
+	cone_mesh.top_radius = 0.02
+	cone_mesh.bottom_radius = tan(deg_to_rad(vision_half_angle))
+	cone_mesh.radial_segments = 16
 	cone_mesh.rings = 1
-	cone_mesh.height = vision_range
-	cone_mesh.top_radius = tan(deg_to_rad(vision_half_angle)) * vision_range
-	cone_mesh.bottom_radius = 0.05
-	_cone.mesh = cone_mesh
-	_cone.rotation_degrees.x = 90.0
-	_cone.position = Vector3(0, 1.4, -vision_range * 0.5)
-	_cone.material_override = _cone_material(body_color)
-	add_child(_cone)
+	cone_mesh.cap_top = false
+	cone_mesh.cap_bottom = false
+	_cone_visual.mesh = cone_mesh
+	_cone_visual.rotation_degrees.x = 90.0
+	_cone_visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var cone_material := StandardMaterial3D.new()
+	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.05)
+	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cone_material.cull_mode = BaseMaterial3D.CULL_BACK
+	_cone_visual.material_override = cone_material
+	_vision_pivot.add_child(_cone_visual)
+
+	_update_vision_visual()
 
 
-func _update_cone_visual() -> void:
-	if _cone == null:
+func _update_vision_visual() -> void:
+	if _spotlight == null:
 		return
-	_cone.visible = true
+	_spotlight.spot_range = vision_range
+	_spotlight.spot_angle = vision_half_angle * 2.0
+	_vision_length = _first_visible_distance()
+	if _cone_visual != null and _cone_visual.mesh is CylinderMesh:
+		var cone_mesh := _cone_visual.mesh as CylinderMesh
+		cone_mesh.bottom_radius = tan(deg_to_rad(vision_half_angle))
+		cone_mesh.top_radius = 0.02
+	if _cone_visual != null:
+		var visual_length := minf(_vision_length, 1.2)
+		_cone_visual.scale = Vector3(visual_length, visual_length, visual_length)
+		_cone_visual.position = Vector3(0, 0, -visual_length * 0.5)
+
+
+## 从眼睛沿当前视线打一条射线，返回第一个遮挡物距离（没有就返回射程）。
+func _first_visible_distance() -> float:
+	if _vision_pivot == null or not is_inside_tree():
+		return vision_range
+	var world := get_world_3d()
+	if world == null:
+		return vision_range
+	var origin := _vision_pivot.global_position
+	var target := origin + _vision_forward() * vision_range
+	var query := PhysicsRayQueryParameters3D.create(origin, target)
+	query.exclude = [get_rid()]
+	var hit := world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return vision_range
+	return clampf(origin.distance_to(hit["position"]), 0.12, vision_range)
+
+
+## 走路时身体/avatar 轻微起伏，停下回正；碰撞体不动。
+func _update_walk_animation(delta: float) -> void:
+	if _visual_root == null:
+		return
+	var horizontal := Vector2(velocity.x, velocity.z).length()
+	if horizontal > 0.08:
+		_walk_phase += delta * (WALK_BOB_FREQ + horizontal * 1.5)
+		var bob := sin(_walk_phase) * WALK_BOB_HEIGHT
+		_visual_root.position = Vector3(0, bob, 0)
+	else:
+		_visual_root.position = _visual_root.position.lerp(Vector3.ZERO, clampf(delta * 8.0, 0.0, 1.0))
 
 
 ## 替换 primitive avatar（GLB 模型由 room_demo 加载）；视锥和名字标签保留。
 func attach_avatar(avatar: Node3D) -> void:
 	if avatar == null:
 		return
+	_ensure_visual()
+	if _visual_root == null:
+		add_child(avatar)
+	else:
+		_visual_root.add_child(avatar)
 	_avatar = avatar
-	add_child(avatar)
 	if _body_mesh != null:
 		_body_mesh.visible = false
 	if _head_mesh != null:
@@ -365,14 +546,4 @@ func _material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
 	material.roughness = 0.8
-	return material
-
-
-func _cone_material(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.albedo_color = Color(color.r, color.g, color.b, 0.16)
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.no_depth_test = false
 	return material

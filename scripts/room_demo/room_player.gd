@@ -7,6 +7,13 @@ signal interaction(action: String)
 signal sit_hint_changed(visible: bool)
 
 const WALK_SPEED := 2.2
+const WALK_ACCEL := 8.0
+const WALK_DECEL := 12.0
+const BOB_FREQUENCY := 9.0
+const BOB_HEIGHT := 0.025
+const BOB_SWAY := 0.012
+const HEAD_HEIGHT := 1.58
+const SEAT_HEAD_HEIGHT := 1.36
 const MOUSE_SENSITIVITY := 0.0025
 const PITCH_MIN := -1.15
 const PITCH_MAX := 0.85
@@ -29,6 +36,12 @@ var _yaw := 0.0
 var _pitch := 0.0
 var _can_sit := false
 var _gravity := 18.0
+var _head_base_position := Vector3(0, HEAD_HEIGHT, 0)
+var _seat_head_position := Vector3(0, SEAT_HEAD_HEIGHT, 0)
+var _bob_time := 0.0
+## 测试用：绕过真实键盘，直接给移动输入。
+var use_test_input := false
+var test_move_input := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -88,7 +101,8 @@ func _build_body() -> void:
 
 	_head = Node3D.new()
 	_head.name = "Head"
-	_head.position = Vector3(0, 1.58, 0)
+	_head_base_position = Vector3(0, HEAD_HEIGHT, 0)
+	_head.position = _head_base_position
 	add_child(_head)
 	camera = Camera3D.new()
 	camera.name = "FirstPersonCamera"
@@ -130,7 +144,33 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if seated:
 		velocity = Vector3.ZERO
+		_reset_head_bob()
 		return
+	var input_dir := _read_move_input()
+	if input_dir.length_squared() > 1.0:
+		input_dir = input_dir.normalized()
+	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
+	var target := direction * WALK_SPEED
+	var rate := WALK_ACCEL if input_dir.length_squared() > 0.0 else WALK_DECEL
+	velocity.x = move_toward(velocity.x, target.x, rate * delta)
+	velocity.z = move_toward(velocity.z, target.z, rate * delta)
+	if not is_on_floor():
+		velocity.y -= _gravity * delta
+	else:
+		velocity.y = -0.1
+	move_and_slide()
+	_update_head_bob(delta)
+
+	var distance := Vector2(global_position.x - chair_position.x, global_position.z - chair_position.z).length()
+	var can_now := distance <= SIT_DISTANCE
+	if can_now != _can_sit:
+		_can_sit = can_now
+		sit_hint_changed.emit(_can_sit)
+
+
+func _read_move_input() -> Vector2:
+	if use_test_input:
+		return test_move_input
 	var input_dir := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W):
 		input_dir.y -= 1.0
@@ -140,22 +180,26 @@ func _physics_process(delta: float) -> void:
 		input_dir.x -= 1.0
 	if Input.is_key_pressed(KEY_D):
 		input_dir.x += 1.0
-	if input_dir.length_squared() > 1.0:
-		input_dir = input_dir.normalized()
-	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
-	velocity.x = direction.x * WALK_SPEED
-	velocity.z = direction.z * WALK_SPEED
-	if not is_on_floor():
-		velocity.y -= _gravity * delta
-	else:
-		velocity.y = -0.1
-	move_and_slide()
+	return input_dir
 
-	var distance := Vector2(global_position.x - chair_position.x, global_position.z - chair_position.z).length()
-	var can_now := distance <= SIT_DISTANCE
-	if can_now != _can_sit:
-		_can_sit = can_now
-		sit_hint_changed.emit(_can_sit)
+
+## 走路时相机轻微上下起伏/左右摆，停下平滑回正；幅度远小于视线高度。
+func _update_head_bob(delta: float) -> void:
+	var speed := Vector2(velocity.x, velocity.z).length()
+	if speed > 0.1:
+		_bob_time += delta * BOB_FREQUENCY * clampf(speed / WALK_SPEED, 0.35, 1.2)
+		var bob := sin(_bob_time) * BOB_HEIGHT
+		var sway := cos(_bob_time * 0.5) * BOB_SWAY
+		_head.position = Vector3(sway, _head_base_position.y + bob, 0.0)
+	else:
+		_bob_time = 0.0
+		_head.position = _head.position.lerp(_head_base_position, clampf(delta * 10.0, 0.0, 1.0))
+
+
+func _reset_head_bob() -> void:
+	_bob_time = 0.0
+	if _head != null:
+		_head.position = _seat_head_position if seated else _head_base_position
 
 
 func try_sit() -> bool:
@@ -167,11 +211,15 @@ func try_sit() -> bool:
 		return false
 	seated = true
 	velocity = Vector3.ZERO
+	# 坐姿相机低于 avatar 头顶，隐藏第一人称模型避免相机埋进头部。
+	if _avatar != null:
+		_avatar.visible = false
 	global_position = Vector3(chair_position.x, 0.0, chair_position.z)
 	rotation.y = 0.0
 	_yaw = 0.0
-	_pitch = -0.12
+	_pitch = 0.02
 	_head.rotation.x = _pitch
+	_reset_head_bob()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	seat_changed.emit(true)
 	return true
@@ -181,7 +229,10 @@ func stand() -> void:
 	if not seated:
 		return
 	seated = false
+	if _avatar != null:
+		_avatar.visible = true
 	global_position = stand_position
+	_reset_head_bob()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	seat_changed.emit(false)
 
@@ -197,6 +248,8 @@ func get_state() -> Dictionary:
 		"yaw": _yaw,
 		"pitch": _pitch,
 		"can_sit": _can_sit,
+		"speed": Vector2(velocity.x, velocity.z).length(),
+		"head_offset": _head.position - _head_base_position,
 	}
 
 
