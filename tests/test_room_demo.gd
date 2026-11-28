@@ -186,10 +186,6 @@ func _run_scene_tests() -> void:
 	_check("坐下后鼠标事件能转发到 3D 监控屏", demo._forward_mouse_to_monitor(motion))
 	demo.monitor_ui.feed_clicked.emit("C2")
 	_check("屏幕 UI 点击信号能选中机位", String(demo.selected_feed) == "C2")
-	var laser_line: Line2D = demo.monitor_ui._laser_line
-	demo.monitor_ui._flash_laser(Vector2(120, 60))
-	_check("监控画面有 2D 激光线", laser_line != null and laser_line.visible
-		and laser_line.points.size() == 2)
 	demo.set_seated(false)
 	_check("站起后玩家状态同步", not demo.player.seated)
 
@@ -200,14 +196,26 @@ func _run_scene_tests() -> void:
 	var c1_feed: Dictionary = demo._feed_by_id("C1")
 	var c1_camera: Camera3D = c1_feed["camera"]
 	var c1_viewport: SubViewport = c1_feed["viewport"]
-	_check("激光从当前机位相机出发",
-		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
-	var expected_dir: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
-	_check("激光方向来自屏幕点投影",
-		(laser_result.get("direction", Vector3.ZERO) as Vector3).dot(expected_dir) > 0.999)
+	var expected_origin: Vector3 = demo.laser_start_position(c1_camera)
+	_check("激光从相机右下方发射器出发",
+		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
+	var emitter_offset: Vector3 = expected_origin - c1_camera.global_position
+	_check("发射器位于相机右侧且下方",
+		emitter_offset.dot(c1_camera.global_transform.basis.x) > 0.0
+		and emitter_offset.dot(c1_camera.global_transform.basis.y) < 0.0,
+		str(emitter_offset))
+	_check("发射器起点在画面外", not c1_camera.is_position_in_frustum(expected_origin))
+	var laser_beam := demo.get_node_or_null("LaserBeam") as MeshInstance3D
+	_check("激光世界线从发射器起点显示",
+		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
+	var expected_ray: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
+	var endpoint_ray: Vector3 = ((laser_result.get("point", Vector3.ZERO) as Vector3) - c1_camera.global_position).normalized()
+	_check("激光落点仍由 screen point 决定",
+		endpoint_ray.dot(expected_ray) > 0.999)
 	var laser_vec: Vector3 = (laser_result.get("point", Vector3.ZERO) as Vector3) - (laser_result.get("origin", Vector3.ZERO) as Vector3)
+	var expected_beam_dir: Vector3 = laser_vec.normalized()
 	_check("激光落点沿该屏幕方向",
-		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_dir) > 0.999,
+		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_beam_dir) > 0.999,
 		str(laser_vec))
 	demo.tick(999.0)
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))

@@ -27,6 +27,9 @@ const NPC_DECEL := 8.0
 const EYE_HEIGHT := 1.45
 const WALK_BOB_HEIGHT := 0.018
 const WALK_BOB_FREQ := 7.0
+# 只缩放 SpotLight 的照明范围/角度，不影响 vision_range / 视锥检测参数。
+const SPOT_RANGE_SCALE := 0.6
+const SPOT_ANGLE_SCALE := 0.6
 const LOOK_YAW_DEG := 24.0
 const LOOK_PITCH_DEG := 7.0
 
@@ -500,8 +503,8 @@ func _ensure_visual() -> void:
 	_spotlight.name = "VisionSpot"
 	_spotlight.light_color = body_color.lightened(0.25)
 	_spotlight.light_energy = 2.0
-	_spotlight.spot_range = vision_range
-	_spotlight.spot_angle = vision_half_angle * 2.0
+	_spotlight.spot_range = vision_range * SPOT_RANGE_SCALE
+	_spotlight.spot_angle = vision_half_angle * 2.0 * SPOT_ANGLE_SCALE
 	_spotlight.spot_angle_attenuation = 1.0
 	_spotlight.shadow_enabled = true
 	_spotlight.shadow_bias = 0.02
@@ -535,6 +538,8 @@ func _ensure_visual() -> void:
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_cone_visual.material_override = cone_material
 	_vision_pivot.add_child(_cone_visual)
+	# 可见圆锥太干扰监控画面；只保留 spotlight 照明，圆锥 mesh 隐藏。
+	_cone_visual.visible = false
 
 	_update_vision_visual()
 
@@ -542,8 +547,8 @@ func _ensure_visual() -> void:
 func _update_vision_visual() -> void:
 	if _spotlight == null:
 		return
-	_spotlight.spot_range = vision_range
-	_spotlight.spot_angle = vision_half_angle * 2.0
+	_spotlight.spot_range = vision_range * SPOT_RANGE_SCALE
+	_spotlight.spot_angle = vision_half_angle * 2.0 * SPOT_ANGLE_SCALE
 	_vision_length = _first_visible_distance()
 	if _cone_visual != null and _cone_visual.mesh is CylinderMesh:
 		var cone_mesh := _cone_visual.mesh as CylinderMesh

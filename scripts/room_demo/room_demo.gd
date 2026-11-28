@@ -41,6 +41,10 @@ const SIGNAL_RANGE := 22.0
 const MONITOR_CENTER := Vector3(0, 1.55, -5.81)
 # monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
 const MONITOR_SIZE := Vector2(3.52, 2.2)
+# Camera3D 比可见相机模型前移一点，避免镜头被自己的模型挡住。
+const CAMERA_LENS_OFFSET := 0.35
+# 激光发射器相对相机的局部位置：右侧/下方，略微在镜头前，投影到画面外。
+const LASER_EMITTER_OFFSET := Vector3(0.32, -0.22, -0.16)
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -251,15 +255,18 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	var camera: Camera3D = feed["camera"]
 	var viewport: SubViewport = feed["viewport"]
 	var screen_point := normalized * Vector2(viewport.size)
-	# screen point -> world：从当前机位相机位置出发，沿该屏幕点的投影方向。
-	var origin: Vector3 = camera.global_position
-	var direction: Vector3 = camera.project_ray_normal(screen_point).normalized()
-	var point := origin + direction * 14.0
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * 40.0)
+	# 先用 Camera3D 的 screen point 射线求准确命中点。
+	var ray_origin: Vector3 = camera.global_position
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_point).normalized()
+	var point := ray_origin + ray_direction * 14.0
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_direction * 40.0)
 	query.collision_mask = 0xFFFFFFFF
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		point = hit.position
+	# 激光从相机右下方的发射器出发；起点在画面外，射线进入画面指向命中点。
+	var origin: Vector3 = laser_start_position(camera)
+	var direction: Vector3 = (point - origin).normalized()
 	_spawn_beam(origin, point)
 	var accepted: Array[String] = []
 	for npc in npcs:
@@ -275,52 +282,56 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	return last_laser
 
 
+## 激光发射器位置：相机局部右下方（画面外），不是镜头本身。
+func laser_start_position(camera: Camera3D) -> Vector3:
+	return camera.to_global(LASER_EMITTER_OFFSET)
+
+
 func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	var total := from.distance_to(to)
 	if total <= 0.05:
 		return
-	# 射线起点仍是相机；视觉光束从相机前方起画，避免相机处在几何体内部糊满屏。
-	var direction := (to - from) / total
-	var visual_from := from + direction * minf(0.8, total * 0.5)
-	var length := visual_from.distance_to(to)
-	if length <= 0.05:
-		return
-	var beam := Node3D.new()
+	# 无厚度世界线：顶点是发射器和命中点，起点在画面外，本机位也能看到入画射线。
+	var line_mesh := ImmediateMesh.new()
+	var line_material := StandardMaterial3D.new()
+	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	line_material.albedo_color = Color(1.0, 0.08, 0.03)
+	line_material.emission_enabled = true
+	line_material.emission = Color(1.0, 0.04, 0.01)
+	line_material.emission_energy_multiplier = 8.0
+	line_mesh.surface_begin(Mesh.PRIMITIVE_LINES, line_material)
+	# 世界线两个顶点：from 是发射器，to 是命中点；不要再加偏移。
+	line_mesh.surface_add_vertex(from)
+	line_mesh.surface_add_vertex(to)
+	line_mesh.surface_end()
+	var beam := MeshInstance3D.new()
 	beam.name = "LaserBeam"
+	beam.mesh = line_mesh
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.set_meta("from", from)
+	beam.set_meta("to", to)
 	add_child(beam)
-	beam.position = (visual_from + to) * 0.5
-	beam.look_at(to, Vector3.UP)
 
-	var core_mesh := BoxMesh.new()
-	core_mesh.size = Vector3(0.012, 0.012, length)
-	var core := MeshInstance3D.new()
-	core.mesh = core_mesh
-	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var core_material := StandardMaterial3D.new()
-	core_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	core_material.albedo_color = Color(1.0, 0.12, 0.05)
-	core_material.emission_enabled = true
-	core_material.emission = Color(1.0, 0.05, 0.02)
-	core_material.emission_energy_multiplier = 8.0
-	core.material_override = core_material
-	beam.add_child(core)
+	var impact_mesh := SphereMesh.new()
+	impact_mesh.radius = 0.07
+	impact_mesh.height = 0.14
+	var impact := MeshInstance3D.new()
+	impact.name = "LaserImpact"
+	impact.mesh = impact_mesh
+	impact.position = to
+	impact.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var impact_material := StandardMaterial3D.new()
+	impact_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	impact_material.albedo_color = Color(1.0, 0.12, 0.04)
+	impact_material.emission_enabled = true
+	impact_material.emission = Color(1.0, 0.05, 0.01)
+	impact_material.emission_energy_multiplier = 5.0
+	impact.material_override = impact_material
+	add_child(impact)
 
-	# 加法辉光层，让细激光在监控画面里也能看见。
-	var glow_mesh := BoxMesh.new()
-	glow_mesh.size = Vector3(0.035, 0.035, length)
-	var glow := MeshInstance3D.new()
-	glow.mesh = glow_mesh
-	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var glow_material := StandardMaterial3D.new()
-	glow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	glow_material.albedo_color = Color(1.0, 0.05, 0.02, 0.18)
-	glow.material_override = glow_material
-	beam.add_child(glow)
-
-	get_tree().create_timer(2.5).timeout.connect(beam.queue_free)
+	get_tree().create_timer(2.5).timeout.connect(func():
+		beam.queue_free()
+		impact.queue_free())
 
 
 func _spawn_explosion(position: Vector3) -> void:
@@ -854,7 +865,7 @@ func _build_feed_viewports() -> void:
 		var position: Vector3 = def["pos"]
 		var look: Vector3 = def["look"]
 		# 机位稍微探出摄像头模型，避免画面里塞满自己的镜头；偏移不要太大，否则会失去高位俯拍角度。
-		camera.position = position + (look - position).normalized() * 0.35
+		camera.position = position + (look - position).normalized() * CAMERA_LENS_OFFSET
 		viewport.add_child(camera)
 		camera.look_at(look, Vector3.UP)
 		feeds.append({
