@@ -88,6 +88,7 @@ var _world: Node3D = null
 var _clues: Array[Dictionary] = []
 var _clue_by_id: Dictionary = {}
 var _fire_exposure: Dictionary = {}
+var _fire_damaged := false
 var _door: Node3D = null
 var _door_body: StaticBody3D = null
 var _door_material: StandardMaterial3D = null
@@ -141,6 +142,7 @@ func tick(delta: float) -> void:
 		fire_system.tick(delta)
 		set_fire_sources(fire_system.get_fire_points())
 		_update_fire_camera_exposure(delta)
+		_update_fire_damage()
 	if monitor_ui != null and camera_session != null:
 		monitor_ui.refresh_feed_states(camera_session)
 		_update_dwell_ui()
@@ -957,6 +959,22 @@ func _update_fire_camera_exposure(delta: float) -> void:
 				_notify("%s 被火焰持续烧灼 20 秒，过载爆炸" % camera_id)
 		else:
 			_fire_exposure[camera_id] = maxf(float(_fire_exposure.get(camera_id, 0.0)) - delta * 2.0, 0.0)
+
+
+func _update_fire_damage() -> void:
+	if _fire_damaged or fire_system == null or fire_system.radius < 3.0:
+		return
+	_fire_damaged = true
+	# 舞台区域被火吞没：幕布/地台/道具变焦黑。
+	for node_name in ["StagePlatform", "StageCurtain", "StageCurtainTop", "CrateA", "PropCrate1"]:
+		var node := _world.find_child(node_name, true, false) as MeshInstance3D
+		if node == null:
+			continue
+		var material := node.material_override as StandardMaterial3D
+		if material != null:
+			node.material_override = material.duplicate()
+			(node.material_override as StandardMaterial3D).albedo_color = Color(0.035, 0.028, 0.024)
+	_notify("舞台区域被火焰吞没，机位开始过载")
 
 
 func _on_squirrel_item_dropped(item: Node3D, drop_position: Vector3) -> void:
