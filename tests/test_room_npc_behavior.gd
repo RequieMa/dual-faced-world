@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 37
+const EXPECTED_CHECKS := 38
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -82,6 +82,9 @@ func _initialize() -> void:
 	_check("视锥启用阴影（只照第一个面）", spot != null and spot.shadow_enabled)
 	_check("视锥距离不大", spot != null and spot.spot_range <= 6.6,
 		"" if spot == null else "range=%.2f" % spot.spot_range)
+	_check("SpotLight 明显小于探测范围",
+		spot != null and spot.spot_range < npc.vision_range * 0.7,
+		"" if spot == null else "spot=%.2f vision=%.2f" % [spot.spot_range, npc.vision_range])
 	_check("视锥角度不大", spot != null and spot.spot_angle <= 70.0,
 		"" if spot == null else "angle=%.1f" % spot.spot_angle)
 	_check("视锥不参与 GI", spot != null and is_equal_approx(spot.light_indirect_energy, 0.0))

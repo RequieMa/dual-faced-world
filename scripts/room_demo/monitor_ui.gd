@@ -14,6 +14,8 @@ const FISHEYE_STRENGTH := 0.10
 const COLOR_TEXT := Color(0.86, 0.92, 1.0)
 const COLOR_MUTED := Color(0.58, 0.66, 0.8)
 const COLOR_ACCENT := Color(0.42, 0.82, 1.0)
+# 2D 激光线起点（相对放大画面）：0.5/0.5 = 画面中心 = 相机投影中心。
+const LASER_ORIGIN_UV := Vector2(0.5, 0.5)
 
 var _feeds: Array[Dictionary] = []
 var _feed_buttons: Dictionary = {}
@@ -253,7 +255,7 @@ func _flash_laser(local_point: Vector2) -> void:
 		return
 	if _laser_tween != null and _laser_tween.is_valid():
 		_laser_tween.kill()
-	_laser_line.points = PackedVector2Array([_big_feed.size * 0.5, local_point])
+	_laser_line.points = PackedVector2Array([_big_feed.size * LASER_ORIGIN_UV, local_point])
 	_laser_line.modulate.a = 1.0
 	_laser_line.visible = true
 	_laser_tween = create_tween()

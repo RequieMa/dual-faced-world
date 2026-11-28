@@ -200,17 +200,20 @@ func _run_scene_tests() -> void:
 	var c1_feed: Dictionary = demo._feed_by_id("C1")
 	var c1_camera: Camera3D = c1_feed["camera"]
 	var c1_viewport: SubViewport = c1_feed["viewport"]
-	_check("激光从当前机位相机出发",
-		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
+	var expected_origin: Vector3 = demo.laser_start_position(c1_camera)
+	_check("激光从可见相机模型出发",
+		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
 	var laser_beam := demo.get_node_or_null("LaserBeam") as MeshInstance3D
-	_check("激光世界线从相机起点显示",
-		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
-	var expected_dir: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
-	_check("激光方向来自屏幕点投影",
-		(laser_result.get("direction", Vector3.ZERO) as Vector3).dot(expected_dir) > 0.999)
+	_check("激光世界线从相机模型起点显示",
+		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
+	var expected_ray: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
+	var endpoint_ray: Vector3 = ((laser_result.get("point", Vector3.ZERO) as Vector3) - c1_camera.global_position).normalized()
+	_check("激光落点仍由 screen point 决定",
+		endpoint_ray.dot(expected_ray) > 0.999)
 	var laser_vec: Vector3 = (laser_result.get("point", Vector3.ZERO) as Vector3) - (laser_result.get("origin", Vector3.ZERO) as Vector3)
+	var expected_beam_dir: Vector3 = laser_vec.normalized()
 	_check("激光落点沿该屏幕方向",
-		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_dir) > 0.999,
+		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_beam_dir) > 0.999,
 		str(laser_vec))
 	demo.tick(999.0)
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))

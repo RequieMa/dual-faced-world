@@ -41,6 +41,8 @@ const SIGNAL_RANGE := 22.0
 const MONITOR_CENTER := Vector3(0, 1.55, -5.81)
 # monitor_viewport 是 1280×800（1.6），QuadMesh 必须保持同样比例，避免画面横向拉伸。
 const MONITOR_SIZE := Vector2(3.52, 2.2)
+# Camera3D 比可见相机模型前移一点，避免镜头被自己的模型挡住。
+const CAMERA_LENS_OFFSET := 0.35
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -251,15 +253,18 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	var camera: Camera3D = feed["camera"]
 	var viewport: SubViewport = feed["viewport"]
 	var screen_point := normalized * Vector2(viewport.size)
-	# screen point -> world：从当前机位相机位置出发，沿该屏幕点的投影方向。
-	var origin: Vector3 = camera.global_position
-	var direction: Vector3 = camera.project_ray_normal(screen_point).normalized()
-	var point := origin + direction * 14.0
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * 40.0)
+	# 先用 Camera3D 的 screen point 射线求准确命中点。
+	var ray_origin: Vector3 = camera.global_position
+	var ray_direction: Vector3 = camera.project_ray_normal(screen_point).normalized()
+	var point := ray_origin + ray_direction * 14.0
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_direction * 40.0)
 	query.collision_mask = 0xFFFFFFFF
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		point = hit.position
+	# 世界光束从可见相机模型出发，而不是悬在镜头前方 CAMERA_LENS_OFFSET 米。
+	var origin: Vector3 = laser_start_position(camera)
+	var direction: Vector3 = (point - origin).normalized()
 	_spawn_beam(origin, point)
 	var accepted: Array[String] = []
 	for npc in npcs:
@@ -275,11 +280,18 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	return last_laser
 
 
+## 激光世界线/光束的起点：可见相机模型的位置。
+## 想改射线起点，只改这个函数（返回 camera.global_position 就是投影相机位置）。
+func laser_start_position(camera: Camera3D) -> Vector3:
+	var forward := -camera.global_transform.basis.z.normalized()
+	return camera.global_position - forward * CAMERA_LENS_OFFSET
+
+
 func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	var total := from.distance_to(to)
 	if total <= 0.05:
 		return
-	# 无厚度世界线：顶点严格是相机和命中点，避免体积光束在相机内糊屏/起点偏移。
+	# 无厚度世界线：顶点是相机模型和命中点，避免体积光束在相机内糊屏/起点偏移。
 	var line_mesh := ImmediateMesh.new()
 	var line_material := StandardMaterial3D.new()
 	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -288,6 +300,7 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	line_material.emission = Color(1.0, 0.04, 0.01)
 	line_material.emission_energy_multiplier = 8.0
 	line_mesh.surface_begin(Mesh.PRIMITIVE_LINES, line_material)
+	# 世界线两个顶点：from 是相机模型起点，to 是命中点；不要再加偏移。
 	line_mesh.surface_add_vertex(from)
 	line_mesh.surface_add_vertex(to)
 	line_mesh.surface_end()
@@ -852,7 +865,7 @@ func _build_feed_viewports() -> void:
 		var position: Vector3 = def["pos"]
 		var look: Vector3 = def["look"]
 		# 机位稍微探出摄像头模型，避免画面里塞满自己的镜头；偏移不要太大，否则会失去高位俯拍角度。
-		camera.position = position + (look - position).normalized() * 0.35
+		camera.position = position + (look - position).normalized() * CAMERA_LENS_OFFSET
 		viewport.add_child(camera)
 		camera.look_at(look, Vector3.UP)
 		feeds.append({
