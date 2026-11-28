@@ -140,16 +140,74 @@ func tick(delta: float, clues: Array) -> void:
 
 ## 收到玩家激光/截图信号。超出范围或仍在“忽略期”返回 false。
 func receive_signal(point: Vector3, now: float = -1.0) -> bool:
+	if global_position.distance_to(point) > signal_range:
+		return false
+	return _accept_signal(point, now)
+
+
+## 激光射线与视锥相交才响应；不能只按落点距离判断。
+func receive_laser(ray_origin: Vector3, ray_end: Vector3, now: float = -1.0) -> bool:
+	if not _ray_intersects_vision_cone(ray_origin, ray_end):
+		return false
+	return _accept_signal(ray_end, now)
+
+
+func _accept_signal(point: Vector3, now: float) -> bool:
 	var at := _now if now < 0.0 else now
 	if at < _ignore_until:
-		return false
-	if global_position.distance_to(point) > signal_range:
 		return false
 	_target = Vector3(point.x, global_position.y, point.z)
 	_signal_active = true
 	_seeking_clue_id = ""
 	_set_state(STATE_SEEK)
 	return true
+
+
+## 有限线段与有限视锥（顶点在眼睛、轴为视向、半角 vision_half_angle）求交。
+func _ray_intersects_vision_cone(ray_origin: Vector3, ray_end: Vector3) -> bool:
+	var apex := _vision_origin()
+	var axis := _vision_forward()
+	if axis.length_squared() < 0.0001:
+		return false
+	var height := _vision_length
+	if height <= 0.01:
+		height = vision_range
+	var k := tan(deg_to_rad(vision_half_angle))
+
+	var v := ray_origin - apex
+	var w := ray_end - ray_origin
+	var dv := w.dot(axis)
+	var c := v.dot(axis)
+	var v_perp := v - axis * c
+	var w_perp := w - axis * dv
+	var a := w_perp.length_squared() - k * k * dv * dv
+	var b := 2.0 * (v_perp.dot(w_perp) - k * k * c * dv)
+	var d := v_perp.length_squared() - k * k * c * c
+
+	if _point_in_vision_cone(ray_origin, apex, axis, height, k) 			or _point_in_vision_cone(ray_end, apex, axis, height, k):
+		return true
+	if absf(a) < 0.00001:
+		if absf(b) < 0.00001:
+			return false
+		var t := -d / b
+		return t >= 0.0 and t <= 1.0 and _point_in_vision_cone(ray_origin + w * t, apex, axis, height, k)
+	var disc := b * b - 4.0 * a * d
+	if disc < 0.0:
+		return false
+	var root := sqrt(disc)
+	for t in [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]:
+		if t >= 0.0 and t <= 1.0 and _point_in_vision_cone(ray_origin + w * t, apex, axis, height, k):
+			return true
+	return false
+
+
+func _point_in_vision_cone(point: Vector3, apex: Vector3, axis: Vector3,
+		height: float, k: float) -> bool:
+	var offset := point - apex
+	var axial := offset.dot(axis)
+	if axial < 0.0 or axial > height:
+		return false
+	return (offset - axis * axial).length() <= k * axial
 
 
 ## 目标点是否在视锥内，且到目标点的射线不被墙/家具挡住。
@@ -472,7 +530,7 @@ func _ensure_visual() -> void:
 	_cone_visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var cone_material := StandardMaterial3D.new()
 	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.05)
+	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.8)
 	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_cone_visual.material_override = cone_material
@@ -492,7 +550,8 @@ func _update_vision_visual() -> void:
 		cone_mesh.bottom_radius = tan(deg_to_rad(vision_half_angle))
 		cone_mesh.top_radius = 0.02
 	if _cone_visual != null:
-		var visual_length := minf(_vision_length, 1.2)
+		# 一直画到第一个遮挡物；没有遮挡就画满视距。
+		var visual_length := maxf(_vision_length, 0.12)
 		_cone_visual.scale = Vector3(visual_length, visual_length, visual_length)
 		_cone_visual.position = Vector3(0, 0, -visual_length * 0.5)
 

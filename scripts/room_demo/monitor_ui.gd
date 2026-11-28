@@ -30,6 +30,8 @@ var _dwell_label: Label
 var _notice: Label
 var _fisheye_material: ShaderMaterial
 var _snow_textures: Array[ImageTexture] = []
+var _laser_line: Line2D
+var _laser_tween: Tween
 
 
 func setup() -> void:
@@ -92,6 +94,16 @@ func setup() -> void:
 	_big_feed.material = _fisheye_material
 	_big_feed.gui_input.connect(_on_big_feed_input)
 	_big_box.add_child(_big_feed)
+	_laser_line = Line2D.new()
+	_laser_line.name = "LaserLine"
+	_laser_line.width = 3.0
+	_laser_line.default_color = Color(1.0, 0.08, 0.03, 0.95)
+	_laser_line.joint_mode = Line2D.LINE_JOINT_ROUND
+	_laser_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_laser_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_laser_line.z_index = 10
+	_laser_line.visible = false
+	_big_feed.add_child(_laser_line)
 	var back := _button("返回 4 路画面")
 	back.pressed.connect(func(): close_feed_requested.emit())
 	_big_box.add_child(back)
@@ -187,6 +199,8 @@ func refresh_feed_states(session) -> void:
 
 func set_selected(feed_id: String) -> void:
 	_selected = feed_id
+	if _laser_line != null:
+		_laser_line.visible = false
 	_grid_box.visible = feed_id.is_empty()
 	_big_box.visible = not feed_id.is_empty()
 	if feed_id.is_empty():
@@ -228,8 +242,24 @@ func _on_big_feed_input(event: InputEvent) -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 	var uv := _big_feed.get_local_mouse_position() / size
+	# 从相机视角看，3D 光束沿视线只能看到一个端点；这里补屏幕空间射线。
+	_flash_laser(_big_feed.get_local_mouse_position())
 	laser_requested.emit(_selected, _undistort_uv(uv))
 	_big_feed.accept_event()
+
+
+func _flash_laser(local_point: Vector2) -> void:
+	if _laser_line == null:
+		return
+	if _laser_tween != null and _laser_tween.is_valid():
+		_laser_tween.kill()
+	_laser_line.points = PackedVector2Array([_big_feed.size * 0.5, local_point])
+	_laser_line.modulate.a = 1.0
+	_laser_line.visible = true
+	_laser_tween = create_tween()
+	_laser_tween.tween_interval(0.45)
+	_laser_tween.tween_property(_laser_line, "modulate:a", 0.0, 0.35)
+	_laser_tween.tween_callback(func(): _laser_line.visible = false)
 
 
 func uses_fisheye() -> bool:

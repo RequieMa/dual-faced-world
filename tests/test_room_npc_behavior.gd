@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 38
+const EXPECTED_CHECKS := 40
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -88,6 +88,13 @@ func _initialize() -> void:
 	var cone_material := cone.material_override as StandardMaterial3D if cone != null else null
 	_check("可见锥体双面渲染",
 		cone_material != null and cone_material.cull_mode == BaseMaterial3D.CULL_DISABLED)
+	_check("可见锥体透明度 80%",
+		cone_material != null and is_equal_approx(cone_material.albedo_color.a, 0.8),
+		"" if cone_material == null else str(cone_material.albedo_color.a))
+	var vision_length := float(npc.get_state().get("vision_length", 0.0))
+	_check("锥体一直画到遮挡距离",
+		cone != null and absf(cone.scale.x - vision_length) < 0.05,
+		"" if cone == null else "cone=%.2f vision=%.2f" % [cone.scale.x, vision_length])
 	_check("NPC 初始在停顿", String(npc.state) == "pause", str(npc.state))
 
 	# 4) NPC 有起步加速和走路起伏。
