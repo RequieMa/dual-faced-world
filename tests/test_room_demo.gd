@@ -31,6 +31,9 @@ func _initialize() -> void:
 	_check("avatar 加载器存在", ResourceLoader.exists(AVATAR_LOADER))
 	_check("二次元 toon shader 存在", ResourceLoader.exists(TOON_SHADER))
 	_check("main.tscn 存在", ResourceLoader.exists(MAIN_SCENE))
+	_check("飞鼠独立 demo 场景存在", ResourceLoader.exists("res://scenes/demo_squirrel.tscn"))
+	_check("火焰独立 demo 场景存在", ResourceLoader.exists("res://scenes/demo_fire.tscn"))
+	_check("Lumine 动作 demo 场景存在", ResourceLoader.exists("res://scenes/demo_animation.tscn"))
 
 
 func _process(_delta: float) -> bool:
@@ -62,9 +65,11 @@ func _run_photo_tests() -> void:
 	var first: Dictionary = store.drop_to_screen(a, 104.0)
 	_check("第一张照片可放上滚动屏", bool(first.get("accepted", false)))
 	var second: Dictionary = store.drop_to_screen(b, 105.0)
-	_check("短间隔的两张线索照片能组合", bool(second.get("combined", false)), str(second))
-	_check("组合结果是门禁码", String(second.get("code", "")) == "A-317")
-	var combined_photo: Dictionary = store.find_photo(String(second.get("photo_id", "")))
+	_check("可以继续放入第二张照片", bool(second.get("accepted", false)))
+	var sent: Dictionary = store.send_screen(106.0)
+	_check("点击发送后两张线索照片能组合", bool(sent.get("combined", false)), str(sent))
+	_check("组合结果是门禁码", String(sent.get("code", "")) == "A-317")
+	var combined_photo: Dictionary = store.find_photo(String(sent.get("photo_id", "")))
 	_check("组合产物进入照片仓库", not combined_photo.is_empty())
 	_check("组合产物类型是 combined", String(combined_photo.get("kind", "")) == "combined")
 
@@ -72,26 +77,37 @@ func _run_photo_tests() -> void:
 	var c: String = late.add_photo("clue", "半张门禁码", "C1", 200.0, {"clue_id": "clue_a"})
 	var d: String = late.add_photo("clue", "另半张门禁码", "C2", 230.0, {"clue_id": "clue_b"})
 	late.drop_to_screen(c, 201.0)
-	var too_late: Dictionary = late.drop_to_screen(d, 202.0)
-	_check("间隔太久不组合", not bool(too_late.get("combined", false)), str(too_late))
+	late.drop_to_screen(d, 202.0)
+	var late_sent: Dictionary = late.send_screen(203.0)
+	_check("不再限制照片间隔，发送时仍可组合", bool(late_sent.get("combined", false)), str(late_sent))
 
 	var shot: String = late.add_photo("screenshot", "截图 C1", "C1", 240.0,
 		{"focus_point": Vector3(1, 1, -3)})
 	var shot_result: Dictionary = late.drop_to_screen(shot, 241.0)
 	_check("截图照片可以放上滚动屏", bool(shot_result.get("accepted", false)))
-	_check("截图照片标记为 screenshot", bool(shot_result.get("screenshot", false)))
+	var shot_sent: Dictionary = late.send_screen(242.0)
+	_check("发送截图后标记为 screenshot", bool(shot_sent.get("screenshot", false)))
 	_check("不存在的照片不能放上滚动屏",
-		not bool(late.drop_to_screen("photo_missing", 242.0).get("accepted", true)))
+		not bool(late.drop_to_screen("photo_missing", 243.0).get("accepted", true)))
 	_check("重复放同一张照片被拒",
-		not bool(late.drop_to_screen(shot, 243.0).get("accepted", true)))
+		not bool(late.drop_to_screen(shot, 244.0).get("accepted", true)))
 
-	# 滚动屏展示失败后必须冷却并自动清屏，不能卡在不可用状态。
+	var hint_store = load(PHOTO_STORE).new()
+	var water_id: String = hint_store.add_photo("water", "水桶", "C3", 250.0)
+	var blanket_id: String = hint_store.add_photo("blanket", "湿被子", "C3", 251.0)
+	hint_store.drop_to_screen(water_id, 250.0)
+	hint_store.drop_to_screen(blanket_id, 251.0)
+	var hint_sent: Dictionary = hint_store.send_screen(252.0)
+	_check("水和被子发送后给出组合提示",
+		bool(hint_sent.get("accepted", false)) and String(hint_sent.get("hint", "")) == "wet_blanket",
+		str(hint_sent))
+
+	# 发送失败后必须冷却并自动清屏，不能卡在不可用状态。
 	var reset_store = load(PHOTO_STORE).new()
 	var r1: String = reset_store.add_photo("clue", "半张门禁码", "C1", 300.0, {"clue_id": "clue_a"})
-	var r2: String = reset_store.add_photo("clue", "另半张门禁码", "C2", 330.0, {"clue_id": "clue_b"})
 	reset_store.drop_to_screen(r1, 300.0)
-	var failed: Dictionary = reset_store.drop_to_screen(r2, 301.0)
-	_check("滚动屏展示失败进入冷却",
+	var failed: Dictionary = reset_store.send_screen(301.0)
+	_check("无法识别的发送进入冷却",
 		not bool(failed.get("accepted", true)) and reset_store.screen_state == "cooldown",
 		str(failed))
 	_check("冷却期间拒绝新的照片",
@@ -107,11 +123,11 @@ func _run_photo_tests() -> void:
 	var display_shot: String = display_store.add_photo("screenshot", "截图 C1", "C1", 400.0,
 		{"focus_point": Vector3(1, 1, -3)})
 	display_store.drop_to_screen(display_shot, 400.0)
-	_check("截图展示进入展示状态", display_store.screen_state == "showing",
+	var display_sent: Dictionary = display_store.send_screen(401.0)
+	_check("截图发送进入冷却", display_store.screen_state == "cooldown" and bool(display_sent.get("screenshot", false)),
 		display_store.screen_state)
 	display_store.tick(406.0)
-	display_store.tick(412.0)
-	_check("截图展示结束后的冷却也会自动重置",
+	_check("截图发送后的冷却也会自动重置",
 		display_store.screen_state == "idle" and display_store.screen_photo_ids.is_empty(),
 		"state=%s ids=%s" % [display_store.screen_state, display_store.screen_photo_ids])
 
@@ -160,6 +176,37 @@ func _run_npc_tests() -> void:
 	_check("谨慎 NPC 不会因为跑空而忽略信号",
 		cautious.receive_signal(Vector3(0.5, 0, 0)), str(cautious.get_state()))
 
+	var fire_npc = load(NPC_SCRIPT).new()
+	root.add_child(fire_npc)
+	fire_npc.configure("npc_fire", "reckless", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
+	fire_npc.set_fire_sources([Vector3(1.0, 0, 0)])
+	fire_npc.tick(0.25, [])
+	_check("NPC 会远离火焰", bool(fire_npc.get_state().get("fire_fleeing", false)),
+		str(fire_npc.get_state()))
+	fire_npc.queue_free()
+
+	var wall_npc = load(NPC_SCRIPT).new()
+	root.add_child(wall_npc)
+	wall_npc.configure("npc_wall", "reckless", Vector3(0, 0, 0),
+		[Vector3(20, 0, 0), Vector3(0, 0, 20)])
+	wall_npc.set_navigation_bounds(Vector3(-10, 0, -10), Vector3(10, 0, 10))
+	wall_npc.tick(5.0, [])
+	_check("NPC 导航目标会避开墙面",
+		wall_npc.global_position.x <= 8.81 and wall_npc.global_position.z <= 8.81,
+		str(wall_npc.global_position))
+	wall_npc.queue_free()
+
+	var idle_npc = load(NPC_SCRIPT).new()
+	root.add_child(idle_npc)
+	idle_npc.configure("npc_idle", "cautious", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
+	idle_npc.state = "search"
+	idle_npc._search_remaining = 99.0
+	idle_npc.tick(6.0, [])
+	_check("NPC 原地不动超过 5 秒会强制换目标",
+		String(idle_npc.get_state().get("state", "")) != "search",
+		str(idle_npc.get_state()))
+	idle_npc.queue_free()
+
 	reckless.queue_free()
 	cautious.queue_free()
 
@@ -185,6 +232,28 @@ func _run_scene_tests() -> void:
 	_check("场景有滚动屏 SubViewport", demo.scroll_viewport != null)
 	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
 	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
+	_check("场景有程序化火焰系统", demo.fire_system != null)
+	_check("火焰有 3D 体积纹理", demo.fire_system != null and demo.fire_system._texture != null)
+	_check("火焰有程序化音频", demo.fire_system != null and demo.fire_system._audio != null)
+	_check("火焰有可见火舌层", demo.fire_system != null and demo.fire_system._flames.size() > 0)
+	_check("场景有水源和被子", demo._hintables.size() >= 3)
+	_check("场景有通往观察区的检修通道", demo.find_child("AccessCorridorFloor", true, false) != null)
+	_check("滚动屏有发送信号", demo.ui.has_signal("scroll_send_requested"))
+	demo.player.apply_wet(5.0)
+	_check("玩家可以打湿自己", demo.player.is_fire_protected()
+		and is_equal_approx(demo.player.fire_protection_time, 5.0))
+	demo.player.apply_wet_blanket(30.0)
+	_check("玩家可以披湿被子 30 秒", demo.player.fire_protection_time >= 29.0)
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(-6.4, 0.0, -2.2)
+	_check("靠近水桶按 E 可以打湿", demo._try_hazard_interaction()
+		and demo.player.fire_protection_kind == "wet")
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(8.2, 0.0, -20.2)
+	_check("靠近被子按 E 可以披上", demo._try_hazard_interaction()
+		and demo.player.fire_protection_kind == "blanket")
+	demo.player.global_position = Vector3(1.2, 0.0, -1.8)
+	demo.player.fire_protection_time = 0.0
 	_check("NPC 使用带碰撞的 CharacterBody3D", demo.npcs[0] is CharacterBody3D
 		and demo.npcs[0].get_node_or_null("NpcCollision") != null)
 	_check("摄像头高度接近天花板", demo.feeds[0]["camera"].global_position.y >= 2.6)
@@ -192,6 +261,17 @@ func _run_scene_tests() -> void:
 	_check("监控画面启用鱼眼畸变", demo.monitor_ui.uses_fisheye())
 	_check("监控画面有老电视扫描线暗纹", demo.monitor_ui.uses_scanlines())
 	_check("新地图有舞台地台", demo.find_child("StagePlatform", true, false) != null)
+	var stage_floor := demo.find_child("RoomAFloor", true, false) as MeshInstance3D
+	var stage_floor_mesh := stage_floor.mesh as BoxMesh if stage_floor != null else null
+	_check("C1/C2 舞台体积更大",
+		stage_floor_mesh != null and stage_floor_mesh.size.x >= 12.0 and stage_floor_mesh.size.z >= 13.0,
+		str(stage_floor_mesh.size) if stage_floor_mesh != null else "missing")
+	_check("激光显示时间已缩短", demo.LASER_BEAM_LIFETIME <= 1.0)
+	_check("响应结果在正上方",
+		is_equal_approx(demo.ui._notification.get_anchor(0), 0.5)
+		and is_equal_approx(demo.ui._notification.get_anchor(1), 0.0),
+		"anchors=%s,%s" % [demo.ui._notification.get_anchor(0), demo.ui._notification.get_anchor(1)])
+	_check("火焰扩张速度较慢", demo.fire_system.FIRE_GROWTH_PER_SEC <= 0.12)
 	_check("新地图有后台道具堆", demo.find_child("PropCrate1", true, false) != null)
 	_check("新地图有侧门", demo.find_child("SideDoor", true, false) != null)
 	_check("C4 位于侧门房间", demo.feeds[3]["camera"].global_position.z > -14.0,
@@ -257,16 +337,19 @@ func _run_scene_tests() -> void:
 		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_beam_dir) > 0.999,
 		str(laser_vec))
 	demo.tick(999.0)
+	_check("火焰随时间扩张", demo.fire_system.age > 20.0 and demo.fire_system.radius > 2.0,
+		str(demo.fire_system.get_state()))
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))
 	_check("烧毁画面显示雪花", demo.monitor_ui.is_burned_visual("C1"))
 	_check("烧毁后拒绝再进入", not demo.select_feed("C1"))
 
 	demo.set_seated(true)
-	_check("可以放大 C2", demo.select_feed("C2"))
+	_check("火焰持续烧灼后 C2 也过载", demo.camera_session.is_burned("C2"))
+	_check("可以放大 C3", demo.select_feed("C3"))
 	_check("放大后显示返回按钮", demo.ui.is_feed_zoomed())
 	demo.ui._back_button.pressed.emit()
 	_check("返回按钮关闭放大", not demo.ui.is_feed_zoomed())
-	_check("可以放大 C3", demo.select_feed("C3"))
+	_check("可以放大 C4", demo.select_feed("C4"))
 	var esc := InputEventKey.new()
 	esc.keycode = KEY_ESCAPE
 	esc.pressed = true
@@ -286,15 +369,43 @@ func _run_scene_tests() -> void:
 	_check("照片进入 UI 仓库", demo.photo_store.photos.size() >= 2)
 	var combo: Dictionary = demo.drop_photo_to_screen(a_photo)
 	_check("第一张照片可上滚动屏", bool(combo.get("accepted", false)), str(combo))
-	# 直接构造短间隔：运行时用同一个 elapsed，drop 方法内部会记录时间。
-	combo = demo.drop_photo_to_screen(b_photo)
-	_check("同轮两张线索照片能组合", bool(combo.get("combined", false)), str(combo))
+	var second_drop: Dictionary = demo.drop_photo_to_screen(b_photo)
+	_check("第二张照片也能放入滚动屏", bool(second_drop.get("accepted", false)), str(second_drop))
+	combo = demo.send_scroll_screen()
+	_check("点击发送后两张线索照片能组合", bool(combo.get("combined", false)), str(combo))
 	_check("组合后门解锁", demo.door_unlocked)
+
+	demo.set_seated(false)
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(-6.0, 0.0, -18.0)
+	demo._update_player_fire()
+	_check("没有防火时会被火焰推回安全区",
+		demo.player.global_position.is_equal_approx(Vector3(-6.2, 0.0, -11.8)),
+		str(demo.player.global_position))
+	demo.player.apply_wet(5.0)
+	demo.player.global_position = Vector3(-6.0, 0.0, -18.0)
+	demo._update_player_fire()
+	_check("打湿后可以进入火场", demo.player.global_position.is_equal_approx(Vector3(-6.0, 0.0, -18.0)))
+
+	demo._hint_photo_taken.clear()
+	demo.npcs[0].global_position = Vector3(-6.4, 0.0, -2.2)
+	demo._update_hintable_photos()
+	_check("NPC 靠近水桶会拍照", _has_photo_kind(demo.photo_store.photos, "water"))
+	demo.npcs[0].global_position = Vector3(8.2, 0.0, -20.2)
+	demo._update_hintable_photos()
+	_check("NPC 靠近被子会拍照", _has_photo_kind(demo.photo_store.photos, "blanket"))
 
 	demo.queue_free()
 
 
 # --- 断言工具 -----------------------------------------------------------------
+
+func _has_photo_kind(photos: Array, kind: String) -> bool:
+	for photo in photos:
+		if String(photo.get("kind", "")) == kind:
+			return true
+	return false
+
 
 func _script_path(node: Node) -> String:
 	var script: Script = node.get_script()

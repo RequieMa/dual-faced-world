@@ -37,6 +37,8 @@ var _yaw := 0.0
 var _pitch := 0.0
 var _can_sit := false
 var _gravity := 18.0
+var fire_protection_time := 0.0
+var fire_protection_kind := ""
 var _head_base_position := Vector3(0, HEAD_HEIGHT, 0)
 var _seat_head_position := Vector3(0, SEAT_HEAD_HEIGHT, 0)
 var _bob_time := 0.0
@@ -82,6 +84,26 @@ func _set_first_person_layers(node: Node) -> void:
 
 func has_avatar() -> bool:
 	return _avatar != null
+
+
+func apply_wet(seconds: float) -> void:
+	fire_protection_time = maxf(fire_protection_time, seconds)
+	fire_protection_kind = "wet"
+
+
+func apply_wet_blanket(seconds: float) -> void:
+	fire_protection_time = maxf(fire_protection_time, seconds)
+	fire_protection_kind = "blanket"
+
+
+func tick_fire_protection(delta: float) -> void:
+	fire_protection_time = maxf(fire_protection_time - delta, 0.0)
+	if fire_protection_time <= 0.0:
+		fire_protection_kind = ""
+
+
+func is_fire_protected() -> bool:
+	return fire_protection_time > 0.0
 
 
 func _build_body() -> void:

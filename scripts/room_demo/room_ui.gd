@@ -9,6 +9,7 @@ signal close_feed_requested
 signal stand_requested
 signal laser_requested(feed_id: String, normalized_pos: Vector2)
 signal photo_dropped(photo_id: String)
+signal scroll_send_requested
 
 const COLOR_TEXT := Color(0.86, 0.9, 0.97)
 const COLOR_MUTED := Color(0.62, 0.68, 0.78)
@@ -43,6 +44,7 @@ var _complete: Control
 var _scroll_panel: PanelContainer
 var _scroll_preview: TextureRect
 var _scroll_drop: Button
+var _scroll_send: Button
 var _seat_active := false
 
 
@@ -89,6 +91,18 @@ func _build_scroll_overlay() -> void:
 	_scroll_drop.photo_dropped.connect(func(photo_id: String): photo_dropped.emit(photo_id))
 	stack.add_child(_scroll_drop)
 
+	_scroll_send = Button.new()
+	_scroll_send.name = "ScrollSend"
+	_scroll_send.text = "发送"
+	_scroll_send.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_scroll_send.offset_left = -78
+	_scroll_send.offset_top = -38
+	_scroll_send.offset_right = -6
+	_scroll_send.offset_bottom = -6
+	_scroll_send.focus_mode = Control.FOCUS_NONE
+	_scroll_send.pressed.connect(func(): scroll_send_requested.emit())
+	stack.add_child(_scroll_send)
+
 
 func set_scroll_texture(texture: Texture2D) -> void:
 	if _scroll_preview != null:
@@ -131,10 +145,11 @@ func _build_hud() -> void:
 	_hud.add_child(_back_button)
 
 	_notification = _label("", 15, COLOR_ACCENT)
-	_notification.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_notification.position = Vector2(-520, 18)
-	_notification.custom_minimum_size = Vector2(500, 0)
-	_notification.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# 响应结果放正上方，避免被右上角滚动屏遮住。
+	_notification.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_notification.position = Vector2(-300, 18)
+	_notification.custom_minimum_size = Vector2(600, 0)
+	_notification.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud.add_child(_notification)
 
 	_prompt = _label("", 16, COLOR_TEXT)
@@ -296,7 +311,7 @@ func _build_seat_ui() -> void:
 	_screen_list = VBoxContainer.new()
 	_screen_list.add_theme_constant_override("separation", 2)
 	screen_box.add_child(_screen_list)
-	screen_box.add_child(_label("短间隔的两张可组合线索会自动合成门禁码；截图会引导 NPC 去对应房间。", 12, COLOR_MUTED))
+	screen_box.add_child(_label("可拖入任意张照片；点击发送后统一判定门禁码 / 水+被子提示 / 截图目标。", 12, COLOR_MUTED))
 
 	var help := _label("WASD 走动 · 鼠标看 · 靠近椅子 F 坐下\n坐下后：点画面放大 · 右键发激光 · S 截图", 13, COLOR_MUTED)
 	right.add_child(help)

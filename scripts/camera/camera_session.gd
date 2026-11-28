@@ -145,6 +145,22 @@ func is_burned(camera_id: String) -> bool:
 	return _burned.has(camera_id)
 
 
+## 外部灾害（火焰）直接烧毁机位；仍走同一套 overload/burned 信号。
+func force_burn(camera_id: String) -> bool:
+	if not _cameras.has(camera_id) or _burned.has(camera_id):
+		return false
+	if _current == camera_id:
+		_current = ""
+		_remain = 0.0
+	_cooldowns.erase(camera_id)
+	_overload_count += 1
+	_burned.append(camera_id)
+	overload_started.emit(camera_id)
+	burned.emit(camera_id)
+	overload_finished.emit(camera_id)
+	return true
+
+
 ## 存档快照：只含运行时状态，配置仍以 surveillance.json 为权威来源。
 func to_dict() -> Dictionary:
 	return {

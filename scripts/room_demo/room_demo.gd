@@ -16,6 +16,8 @@ const PLAYER_SCRIPT := preload("res://scripts/room_demo/room_player.gd")
 const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
+const SQUIRREL_SCRIPT := preload("res://scripts/room_demo/flying_squirrel.gd")
+const FIRE_SCRIPT := preload("res://scripts/room_demo/fire_system.gd")
 const LENS_SHADER := preload("res://shaders/lens_distortion.gdshader")
 const LENS_STRENGTH := 0.045
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
@@ -45,13 +47,14 @@ const MONITOR_SIZE := Vector2(3.52, 2.2)
 const CAMERA_LENS_OFFSET := 0.35
 # 激光发射器相对相机的局部位置：右侧/下方，略微在镜头前，投影到画面外。
 const LASER_EMITTER_OFFSET := Vector3(0.32, -0.22, -0.16)
+const LASER_BEAM_LIFETIME := 0.45
 
 ## 对应第一幕原型地图：
 ## C1 舞台全景、C2 舞台/后台门口、C3 后台主视角、C4 侧门。
 ## 机位仍贴墙装在接近天花板的位置，俯视房间。
 const CAMERA_DEFS: Array[Dictionary] = [
-	{"id": "C1", "view": "舞台全景", "pos": Vector3(-2.7, 2.82, -14.8), "look": Vector3(-6.2, 0.80, -18.6), "room": "A"},
-	{"id": "C2", "view": "门口", "pos": Vector3(-1.9, 2.82, -18.0), "look": Vector3(1.8, 0.80, -18.0), "room": "A"},
+	{"id": "C1", "view": "舞台全景", "pos": Vector3(-3.4, 3.25, -14.6), "look": Vector3(-8.5, 0.80, -21.0), "room": "A"},
+	{"id": "C2", "view": "舞台横移", "pos": Vector3(-2.5, 3.15, -18.2), "look": Vector3(-11.5, 0.80, -18.2), "room": "A"},
 	{"id": "C3", "view": "后台主视角", "pos": Vector3(0.7, 2.82, -14.8), "look": Vector3(4.8, 0.80, -18.6), "room": "B"},
 	{"id": "C4", "view": "侧门", "pos": Vector3(5.75, 2.82, -13.15), "look": Vector3(5.75, 0.80, -10.0), "room": "B"},
 ]
@@ -64,6 +67,8 @@ const CLUE_DEFS: Array[Dictionary] = [
 
 var player: CharacterBody3D = null
 var npcs: Array[Node] = []
+var squirrels: Array[Node] = []
+var fire_system: Node3D = null
 var feeds: Array[Dictionary] = []
 var ui: CanvasLayer = null
 var camera_session: Node = null
@@ -83,6 +88,13 @@ var last_laser: Dictionary = {}
 var _world: Node3D = null
 var _clues: Array[Dictionary] = []
 var _clue_by_id: Dictionary = {}
+var _fire_exposure: Dictionary = {}
+var _fire_damaged := false
+var _wet_blanket_hint := false
+var _hintables: Array[Dictionary] = []
+var _hint_photo_taken: Dictionary = {}
+const FIRE_SAFE_POSITION := Vector3(-6.2, 0.0, -11.8)
+const SAFE_EXIT_DISTANCE := 1.6
 var _door: Node3D = null
 var _door_body: StaticBody3D = null
 var _door_material: StandardMaterial3D = null
@@ -95,7 +107,10 @@ func _ready() -> void:
 	add_child(_world)
 	_build_control_room()
 	_build_observation_rooms()
+	_build_fire_hazards()
 	_build_clues()
+	_build_squirrels()
+	_build_fire()
 	_build_camera_models()
 	_build_player()
 	_build_npcs()
@@ -126,15 +141,34 @@ func tick(delta: float) -> void:
 	var npc_delta := minf(delta, 0.2)
 	for npc in npcs:
 		if is_instance_valid(npc):
+			if fire_system != null:
+				npc.set_fire_sources(fire_system.get_fire_points())
 			npc.tick(npc_delta, _clues)
+	for squirrel in squirrels:
+		if is_instance_valid(squirrel):
+			squirrel.tick(npc_delta)
+	if fire_system != null:
+		fire_system.tick(delta)
+		set_fire_sources(fire_system.get_fire_points())
+		_update_fire_camera_exposure(delta)
+		_update_fire_damage()
 	if monitor_ui != null and camera_session != null:
 		monitor_ui.refresh_feed_states(camera_session)
 		_update_dwell_ui()
 	_update_scroll_drop_overlay()
 	if not demo_complete and door_unlocked and player != null and player.global_position.z > DOOR_POS.z + 0.8:
 		_complete()
+	if player != null:
+		player.tick_fire_protection(delta)
+		_update_player_fire()
+	_update_hintable_photos()
 	if player != null and not player.seated:
-		ui.set_prompt("靠近椅子按 F 坐下" if player.can_sit() else "")
+		var prompt := _hazard_prompt()
+		if prompt.is_empty() and player.can_sit():
+			prompt = "靠近椅子按 F 坐下"
+		if prompt.is_empty() and player.is_fire_protected():
+			prompt = "防火防护剩余 %.1f 秒" % player.fire_protection_time
+		ui.set_prompt(prompt)
 
 
 # --- 玩家 / 坐下 ---------------------------------------------------------------
@@ -161,7 +195,7 @@ func _on_seat_changed(seated: bool) -> void:
 	else:
 		ui.hide_seat()
 		close_feed()
-		ui.set_objective("回到门口按 E 离开（需要先组合出门禁码）")
+		ui.set_objective("回到门口按 E 离开（先把门禁码照片拖入滚动屏并发送）")
 		ui.set_prompt("")
 		if monitor_ui != null:
 			monitor_ui.refresh_feed_states(camera_session)
@@ -173,7 +207,7 @@ func _on_interaction(action: String) -> void:
 	if door_unlocked:
 		_complete()
 	else:
-		ui.set_notification("门锁着：把两张门禁码照片拖到滚动屏组合")
+		ui.set_notification("门锁着：把门禁码照片拖到滚动屏，点击发送")
 
 
 # --- 摄像头 -------------------------------------------------------------------
@@ -332,7 +366,7 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	impact.material_override = impact_material
 	add_child(impact)
 
-	get_tree().create_timer(2.5).timeout.connect(func():
+	get_tree().create_timer(LASER_BEAM_LIFETIME).timeout.connect(func():
 		beam.queue_free()
 		impact.queue_free())
 
@@ -434,20 +468,34 @@ func drop_photo_to_screen(photo_id: String) -> Dictionary:
 	var result: Dictionary = photo_store.drop_to_screen(photo_id, elapsed)
 	if not bool(result.get("accepted", false)):
 		_notify(String(result.get("reason", "照片无法使用")))
+	_refresh_scroll_screen(_scroll_status_text())
+	return result
+
+
+## 玩家点击滚动屏“发送”：把当前所有照片一次性提交。
+func send_scroll_screen() -> Dictionary:
+	if photo_store == null:
+		return {}
+	var result: Dictionary = photo_store.send_screen(elapsed)
+	if not bool(result.get("accepted", false)):
+		_notify(String(result.get("reason", "照片无法发送")))
 		_refresh_scroll_screen(_scroll_status_text())
 		return result
 	if bool(result.get("combined", false)):
-		_refresh_scroll_screen("组合成功：门禁码 %s" % String(result.get("code", "")))
 		unlock_door()
+		_notify("滚动屏发送成功：门禁码 %s" % String(result.get("code", "")))
+	elif String(result.get("hint", "")) == "wet_blanket":
+		_wet_blanket_hint = true
+		_notify("滚动屏提示：打湿被子后披上，可坚持 30 秒")
 	elif bool(result.get("screenshot", false)):
 		var point: Vector3 = result.get("focus_point", Vector3.ZERO)
 		var accepted: Array[String] = []
 		for npc in npcs:
 			if is_instance_valid(npc) and npc.receive_signal(point):
 				accepted.append(npc.npc_id)
-		_refresh_scroll_screen("截图已上屏：%s 前往查看" % ("、".join(accepted) if not accepted.is_empty() else "没人响应"))
-	else:
-		_refresh_scroll_screen(String(result.get("reason", "已放上滚动屏")))
+		_notify("截图已发送：%s 前往查看" %
+			("、".join(accepted) if not accepted.is_empty() else "没人响应"))
+	_refresh_scroll_screen(_scroll_status_text())
 	return result
 
 
@@ -532,6 +580,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key.keycode == KEY_S and player != null and player.seated:
 		take_screenshot()
 		get_viewport().set_input_as_handled()
+	elif key.keycode == KEY_E and player != null and not player.seated:
+		if _try_hazard_interaction():
+			get_viewport().set_input_as_handled()
 	elif key.keycode == KEY_R and demo_complete:
 		get_tree().reload_current_scene()
 
@@ -608,6 +659,11 @@ func _build_environment() -> void:
 	environment.ambient_light_color = Color(0.32, 0.36, 0.46)
 	environment.ambient_light_energy = 0.72
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.glow_enabled = true
+	environment.glow_intensity = 0.75
+	environment.glow_strength = 1.0
+	environment.glow_bloom = 0.15
+	environment.glow_hdr_threshold = 0.65
 	var world_env := WorldEnvironment.new()
 	world_env.environment = environment
 	add_child(world_env)
@@ -650,7 +706,11 @@ func _build_control_room() -> void:
 		Color(0.16, 0.18, 0.23))
 	_add_box(_world, "ControlWallL", Vector3(0.16, h, d * 2.0), Vector3(-w, h * 0.5, 0), wall)
 	_add_box(_world, "ControlWallR", Vector3(0.16, h, d * 2.0), Vector3(w, h * 0.5, 0), wall)
-	_add_box(_world, "ControlWallBack", Vector3(w * 2.0, h, 0.16), Vector3(0, h * 0.5, -d), wall)
+	# 后墙留出通往观察区的检修通道（x -7.0..-5.5）。
+	_add_box(_world, "ControlWallBackL", Vector3(1.0, h, 0.16), Vector3(-7.5, h * 0.5, -d), wall)
+	_add_box(_world, "ControlWallBackR", Vector3(13.5, h, 0.16), Vector3(1.25, h * 0.5, -d), wall)
+	_add_box(_world, "ControlWallBackLintel", Vector3(1.5, h - 2.3, 0.16),
+		Vector3(-6.25, (h + 2.3) * 0.5, -d), wall)
 	_add_box(_world, "ControlWallFrontL", Vector3(7.1, h, 0.16), Vector3(-4.45, h * 0.5, d), wall)
 	_add_box(_world, "ControlWallFrontR", Vector3(7.1, h, 0.16), Vector3(4.45, h * 0.5, d), wall)
 	# 门楣从门洞顶 2.4m 一直到天花底面 3.4m，不能留通缝。
@@ -745,14 +805,18 @@ func _build_observation_rooms() -> void:
 	var ceiling := Color(0.14, 0.16, 0.2)
 
 	# 舞台：x[-10,-2], z[-22,-14]
-	_add_box(_world, "RoomAFloor", Vector3(8, 0.12, 8), Vector3(-6, -0.06, -18), floor)
-	_add_box(_world, "RoomACeiling", Vector3(8, 0.12, 8), Vector3(-6, 3.06, -18), ceiling)
-	_add_box(_world, "RoomABack", Vector3(8, 3, 0.16), Vector3(-6, 1.5, -22), wall)
-	_add_box(_world, "RoomAFront", Vector3(8, 3, 0.16), Vector3(-6, 1.5, -14), wall)
-	_add_box(_world, "RoomASide", Vector3(0.16, 3, 8), Vector3(-10, 1.5, -18), wall)
+	# 舞台扩大到 13×14m、净高 4.6m，给 C1/C2 更大的空间体积。
+	_add_box(_world, "RoomAFloor", Vector3(13, 0.12, 14), Vector3(-8.5, -0.06, -20), floor)
+	_add_box(_world, "RoomACeiling", Vector3(13, 0.12, 14), Vector3(-8.5, 4.6, -20), ceiling)
+	_add_box(_world, "RoomABack", Vector3(13, 4.6, 0.16), Vector3(-8.5, 2.3, -27), wall)
+	# 舞台前墙也留出控制室检修通道的开口。
+	_add_box(_world, "RoomAFrontL", Vector3(8, 4.6, 0.16), Vector3(-11, 2.3, -13), wall)
+	_add_box(_world, "RoomAFrontR", Vector3(3.5, 4.6, 0.16), Vector3(-3.75, 2.3, -13), wall)
+	_add_box(_world, "RoomAFrontLintel", Vector3(1.5, 1.6, 0.16), Vector3(-6.25, 3.8, -13), wall)
+	_add_box(_world, "RoomASide", Vector3(0.16, 4.6, 14), Vector3(-15, 2.3, -20), wall)
 	# 舞台右墙开门洞 z[-19,-17]，接后台
-	_add_box(_world, "StageRightBack", Vector3(0.16, 3, 3), Vector3(-2, 1.5, -20.5), wall)
-	_add_box(_world, "StageRightFront", Vector3(0.16, 3, 3), Vector3(-2, 1.5, -15.5), wall)
+	_add_box(_world, "StageRightBack", Vector3(0.16, 4.6, 8), Vector3(-2, 2.3, -23), wall)
+	_add_box(_world, "StageRightFront", Vector3(0.16, 4.6, 4), Vector3(-2, 2.3, -15), wall)
 
 	# 后台：x[-0.5,9.5], z[-22,-14]
 	_add_box(_world, "RoomBFloor", Vector3(10, 0.12, 8), Vector3(4.5, -0.06, -18), floor)
@@ -793,19 +857,31 @@ func _build_observation_rooms() -> void:
 	_add_label3d(_world, "后台", Vector3(4.5, 2.92, -21.7), 34, Color(0.8, 0.85, 1.0))
 	_add_label3d(_world, "道具堆 · 盲区", Vector3(7.4, 2.55, -20.6), 22, Color(0.7, 0.78, 0.9))
 
+	# 控制室 → 舞台的检修通道。
+	_add_box(_world, "AccessCorridorFloor", Vector3(1.5, 0.12, 7),
+		Vector3(-6.25, -0.06, -9.5), floor)
+	_add_box(_world, "AccessCorridorCeiling", Vector3(1.5, 0.12, 7),
+		Vector3(-6.25, 3.06, -9.5), ceiling)
+	_add_box(_world, "AccessCorridorSideL", Vector3(0.16, 3, 7),
+		Vector3(-7.0, 1.5, -9.5), wall)
+	_add_box(_world, "AccessCorridorSideR", Vector3(0.16, 3, 7),
+		Vector3(-5.5, 1.5, -9.5), wall)
+	_add_label3d(_world, "检修通道 → 舞台", Vector3(-6.25, 2.6, -6.25), 20,
+		Color(0.55, 0.9, 1.0))
+
 	# 舞台：地台、幕布、大熊/起火点提示。
-	_add_box(_world, "StagePlatform", Vector3(6.5, 0.18, 5.0), Vector3(-6, 0.09, -18.5),
+	_add_box(_world, "StagePlatform", Vector3(10.0, 0.18, 7.0), Vector3(-8.5, 0.09, -20.0),
 		Color(0.22, 0.13, 0.13), false)
-	_add_box(_world, "StageCurtain", Vector3(7.6, 2.7, 0.12), Vector3(-6, 1.4, -21.82),
+	_add_box(_world, "StageCurtain", Vector3(13.4, 3.8, 0.12), Vector3(-8.5, 1.9, -26.82),
 		Color(0.32, 0.08, 0.08), false)
-	_add_box(_world, "StageCurtainTop", Vector3(7.8, 0.25, 0.3), Vector3(-6, 2.85, -21.75),
+	_add_box(_world, "StageCurtainTop", Vector3(13.5, 0.25, 0.3), Vector3(-8.5, 3.85, -26.75),
 		Color(0.24, 0.06, 0.06), false)
 	var bear := MeshInstance3D.new()
 	var bear_mesh := CapsuleMesh.new()
 	bear_mesh.radius = 0.55
 	bear_mesh.height = 1.4
 	bear.mesh = bear_mesh
-	bear.position = Vector3(-8.0, 0.7, -20.0)
+	bear.position = Vector3(-8.0, 0.7, -22.5)
 	var bear_mat := StandardMaterial3D.new()
 	bear_mat.albedo_color = Color(0.45, 0.27, 0.16)
 	bear_mat.roughness = 0.9
@@ -827,24 +903,78 @@ func _build_observation_rooms() -> void:
 
 	for room in ["A", "B"]:
 		var is_stage: bool = room == "A"
-		var center_x := -6.0 if is_stage else 4.5
+		var center_x := -8.5 if is_stage else 4.5
 		var side := -1.0 if is_stage else 1.0
-		_add_box(_world, "Rug" + room, Vector3(6.0 if is_stage else 7.0, 0.02, 4.8),
-			Vector3(center_x, 0.01, -18), Color(0.18, 0.17, 0.22), false)
-		_add_box(_world, "Shelf" + room, Vector3(0.6, 2.2, 3.0),
-			Vector3(center_x + side * (3.4 if is_stage else 4.4), 1.1, -16.5),
+		_add_box(_world, "Rug" + room, Vector3(9.0 if is_stage else 7.0, 0.02, 8.0),
+			Vector3(center_x, 0.01, -20.0), Color(0.18, 0.17, 0.22), false)
+		_add_box(_world, "Shelf" + room, Vector3(0.6, 2.2, 4.0),
+			Vector3(center_x + side * (5.6 if is_stage else 4.4), 1.1, -18.0),
 			Color(0.3, 0.25, 0.2))
-		_add_box(_world, "Sofa" + room, Vector3(2.4, 0.8, 0.9),
-			Vector3(center_x + side * 1.8, 0.4, -15.0), Color(0.22, 0.27, 0.34))
-		_add_box(_world, "Cabinet" + room, Vector3(1.2, 1.6, 0.6),
-			Vector3(center_x - side * (3.3 if is_stage else 4.0), 0.8, -21.0),
+		_add_box(_world, "Sofa" + room, Vector3(2.8, 0.8, 1.0),
+			Vector3(center_x + side * 2.8, 0.4, -15.2), Color(0.22, 0.27, 0.34))
+		_add_box(_world, "Cabinet" + room, Vector3(1.4, 1.8, 0.7),
+			Vector3(center_x - side * (5.2 if is_stage else 4.0), 0.9, -24.0),
 			Color(0.2, 0.23, 0.29))
 		_add_box(_world, "Planter" + room, Vector3(0.5, 0.7, 0.5),
-			Vector3(center_x - side * (3.8 if is_stage else 4.6), 0.35, -14.8),
+			Vector3(center_x - side * (5.6 if is_stage else 4.6), 0.35, -14.0),
 			Color(0.16, 0.28, 0.22))
-		_add_box(_world, "RoomPanel" + room, Vector3(0.04, 1.4, 5.0),
-			Vector3(center_x + side * ((3.92 if is_stage else 4.92)), 1.4, -18.0),
+		_add_box(_world, "RoomPanel" + room, Vector3(0.04, 1.8, 7.0),
+			Vector3(center_x + side * ((6.42 if is_stage else 4.92)), 1.8, -20.0),
 			Color(0.3, 0.33, 0.4), false)
+
+
+func _build_fire_hazards() -> void:
+	# 水桶：控制室和后台各一个；玩家靠近按 E 打湿自己（5 秒）。
+	_add_hintable("water_control", "water", "水桶", Vector3(-6.4, 0.22, -2.2), true)
+	_add_hintable("water_back", "water", "水桶", Vector3(1.4, 0.22, -16.4), true)
+	# 被子：后台道具堆旁、但不在摄像盲区死角里；靠近按 E 可披上（30 秒）。
+	_add_hintable("blanket", "blanket", "湿被子", Vector3(8.2, 0.16, -20.2), false)
+
+
+func _add_hintable(id: String, kind: String, label: String, position: Vector3, is_bucket: bool) -> void:
+	var node := Node3D.new()
+	node.name = "Hazard_" + id
+	node.position = position
+	_world.add_child(node)
+	var mesh := MeshInstance3D.new()
+	var material := StandardMaterial3D.new()
+	material.roughness = 0.82
+	if is_bucket:
+		var cylinder := CylinderMesh.new()
+		cylinder.top_radius = 0.24
+		cylinder.bottom_radius = 0.20
+		cylinder.height = 0.38
+		mesh.mesh = cylinder
+		material.albedo_color = Color(0.22, 0.55, 0.72)
+		var water := MeshInstance3D.new()
+		var water_mesh := CylinderMesh.new()
+		water_mesh.top_radius = 0.20
+		water_mesh.bottom_radius = 0.20
+		water_mesh.height = 0.03
+		water.mesh = water_mesh
+		water.position.y = 0.18
+		var water_mat := StandardMaterial3D.new()
+		water_mat.albedo_color = Color(0.18, 0.6, 0.8)
+		water_mat.emission_enabled = true
+		water_mat.emission = Color(0.05, 0.25, 0.4)
+		water.material_override = water_mat
+		node.add_child(water)
+	else:
+		var box := BoxMesh.new()
+		box.size = Vector3(0.85, 0.08, 0.65)
+		mesh.mesh = box
+		material.albedo_color = Color(0.62, 0.68, 0.72)
+	mesh.material_override = material
+	node.add_child(mesh)
+	_add_label3d(_world, label, position + Vector3(0, 0.55, 0), 20,
+		Color(0.55, 0.9, 1.0) if is_bucket else Color(0.85, 0.9, 0.95))
+	_hintables.append({
+		"id": id,
+		"kind": kind,
+		"label": label,
+		"position": position,
+		"node": node,
+	})
 
 
 func _build_clues() -> void:
@@ -894,6 +1024,148 @@ func _build_clues() -> void:
 		}
 		_clues.append(clue)
 		_clue_by_id[clue_id] = clue
+
+
+func _build_squirrels() -> void:
+	var carryables: Array[Node3D] = []
+	for clue in _clues:
+		var clue_node = clue.get("node")
+		if clue_node is Node3D:
+			carryables.append(clue_node)
+	var defs := [
+		{"name": "SquirrelStage", "min": Vector3(-14.2, 0, -26.2),
+			"max": Vector3(-2.8, 3.9, -13.8), "seed": 11},
+		{"name": "SquirrelBackstage", "min": Vector3(-0.2, 0, -21.2),
+			"max": Vector3(9.2, 2.7, -14.4), "seed": 23},
+	]
+	for def in defs:
+		var squirrel := SQUIRREL_SCRIPT.new()
+		squirrel.name = String(def["name"])
+		_world.add_child(squirrel)
+		squirrel.setup(def["min"], def["max"], int(def["seed"]), carryables)
+		squirrel.item_dropped.connect(_on_squirrel_item_dropped)
+		squirrels.append(squirrel)
+
+
+func _build_fire() -> void:
+	fire_system = FIRE_SCRIPT.new()
+	fire_system.name = "StageFire"
+	_world.add_child(fire_system)
+	# 飞鼠的火焰敏感点：火心 + 扩张半径采样。
+	set_fire_sources(fire_system.get_fire_points())
+
+
+func _update_fire_camera_exposure(delta: float) -> void:
+	if camera_session == null or fire_system == null:
+		return
+	for feed in feeds:
+		var camera_id := String(feed.get("id", ""))
+		if camera_session.is_burned(camera_id):
+			continue
+		var camera: Camera3D = feed.get("camera")
+		if camera == null:
+			continue
+		if fire_system.threatens_camera(camera.global_position):
+			var exposure := float(_fire_exposure.get(camera_id, 0.0)) + delta
+			_fire_exposure[camera_id] = exposure
+			if exposure >= 20.0 and camera_session.force_burn(camera_id):
+				_fire_exposure.erase(camera_id)
+				_notify("%s 被火焰持续烧灼 20 秒，过载爆炸" % camera_id)
+		else:
+			_fire_exposure[camera_id] = maxf(float(_fire_exposure.get(camera_id, 0.0)) - delta * 2.0, 0.0)
+
+
+func _update_player_fire() -> void:
+	if fire_system == null or player == null:
+		return
+	if not fire_system.threatens_point(player.global_position):
+		return
+	if player.is_fire_protected():
+		return
+	player.global_position = FIRE_SAFE_POSITION
+	_notify("火场太热：先用水桶打湿自己（5秒），或披湿被子（30秒）")
+
+
+func _update_hintable_photos() -> void:
+	if photo_store == null:
+		return
+	for hint in _hintables:
+		var hint_id := String(hint.get("id", ""))
+		if bool(_hint_photo_taken.get(hint_id, false)):
+			continue
+		for npc in npcs:
+			if not is_instance_valid(npc):
+				continue
+			if npc.global_position.distance_to(hint["position"]) > 1.3:
+				continue
+			var feed := _camera_that_sees(hint["position"])
+			var camera_id := String(feed.get("id", "C3"))
+			photo_store.add_photo(String(hint["kind"]), String(hint["label"]),
+				camera_id, elapsed, {"hint_id": hint_id})
+			_hint_photo_taken[hint_id] = true
+			_notify("NPC 拍到了：%s" % String(hint["label"]))
+			_refresh_photos()
+			_refresh_scroll_screen("照片已放入底部仓库，可拖到滚动屏。")
+			break
+
+
+func _hazard_prompt() -> String:
+	if player == null:
+		return ""
+	for hint in _hintables:
+		if player.global_position.distance_to(hint["position"]) > 1.5:
+			continue
+		if String(hint["kind"]) == "water":
+			return "按 E 打湿自己（5 秒防火）"
+		return "按 E 披上湿被子（30 秒防火）"
+	return ""
+
+
+func _try_hazard_interaction() -> bool:
+	if player == null:
+		return false
+	for hint in _hintables:
+		if player.global_position.distance_to(hint["position"]) > 1.5:
+			continue
+		if String(hint["kind"]) == "water":
+			player.apply_wet(5.0)
+			_notify("已打湿自己：最多在火场坚持 5 秒")
+		else:
+			player.apply_wet_blanket(30.0)
+			_notify("已披上湿被子：最多在火场坚持 30 秒")
+		return true
+	return false
+
+
+func _update_fire_damage() -> void:
+	if _fire_damaged or fire_system == null or fire_system.radius < 3.0:
+		return
+	_fire_damaged = true
+	# 舞台区域被火吞没：幕布/地台/道具变焦黑。
+	for node_name in ["StagePlatform", "StageCurtain", "StageCurtainTop", "CrateA", "PropCrate1"]:
+		var node := _world.find_child(node_name, true, false) as MeshInstance3D
+		if node == null:
+			continue
+		var material := node.material_override as StandardMaterial3D
+		if material != null:
+			node.material_override = material.duplicate()
+			(node.material_override as StandardMaterial3D).albedo_color = Color(0.035, 0.028, 0.024)
+	_notify("舞台区域被火焰吞没，机位开始过载")
+
+
+func _on_squirrel_item_dropped(item: Node3D, drop_position: Vector3) -> void:
+	for clue in _clues:
+		if clue.get("node") == item:
+			clue["position"] = drop_position
+			_clue_by_id[String(clue["id"])] = clue
+			return
+
+
+## 给未来场景的火焰区域预留接口：每个火焰点会让附近的飞鼠加速逃离。
+func set_fire_sources(points: Array[Vector3]) -> void:
+	for squirrel in squirrels:
+		if is_instance_valid(squirrel):
+			squirrel.set_fire_sources(points)
 
 
 func _build_camera_models() -> void:
@@ -1022,17 +1294,24 @@ func _build_player() -> void:
 
 
 func _build_npcs() -> void:
-	var waypoints := [
-		Vector3(-8.5, 0, -19.5), Vector3(-4.0, 0, -19.5),
-		Vector3(-8.0, 0, -15.5), Vector3(-3.0, 0, -15.5),
-		Vector3(-1.25, 0, -18.0),
-		Vector3(1.0, 0, -19.5), Vector3(7.0, 0, -19.5),
-		Vector3(2.0, 0, -15.5), Vector3(8.5, 0, -15.5),
+	# 每个 NPC 只在自己房间的“安全内圈”里巡逻，避免穿过门洞后贴着墙走或面壁。
+	var stage_waypoints := [
+		Vector3(-12.8, 0, -24.8), Vector3(-3.2, 0, -24.5),
+		Vector3(-12.6, 0, -14.8), Vector3(-3.2, 0, -14.8),
+		Vector3(-8.0, 0, -19.5),
+	]
+	var backstage_waypoints := [
+		Vector3(1.2, 0, -20.0), Vector3(8.2, 0, -20.0),
+		Vector3(1.2, 0, -15.2), Vector3(8.2, 0, -15.2),
+		Vector3(5.0, 0, -18.0),
 	]
 	var reckless = NPC_SCRIPT.new()
 	reckless.name = "NpcReckless"
-	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), waypoints)
+	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), stage_waypoints)
 	_world.add_child(reckless)
+	reckless.set_navigation_bounds(Vector3(-15, 0, -27), Vector3(-2, 0, -13))
+	# 固定跑向舞台右侧门洞附近，避免在火里左右换目标打转。
+	reckless.set_fire_escape_target(Vector3(-2.4, 0, -18.0))
 	reckless.clue_collected.connect(_on_clue_collected)
 	var chicken := AVATAR_LOADER.load_avatar(CHICKEN_GLB, 1.72, 180.0)
 	if chicken != null:
@@ -1040,8 +1319,9 @@ func _build_npcs() -> void:
 	npcs.append(reckless)
 	var cautious = NPC_SCRIPT.new()
 	cautious.name = "NpcCautious"
-	cautious.configure("cautious", "cautious", Vector3(5.5, 0, -18.5), waypoints)
+	cautious.configure("cautious", "cautious", Vector3(5.5, 0, -18.5), backstage_waypoints)
 	_world.add_child(cautious)
+	cautious.set_navigation_bounds(Vector3(-0.5, 0, -22), Vector3(9.5, 0, -14))
 	cautious.clue_collected.connect(_on_clue_collected)
 	var soyo := AVATAR_LOADER.load_avatar(SOYO_GLB, 1.72, 180.0)
 	if soyo != null:
@@ -1055,6 +1335,7 @@ func _build_ui() -> void:
 	add_child(ui)
 	ui.setup()
 	ui.photo_dropped.connect(drop_photo_to_screen)
+	ui.scroll_send_requested.connect(send_scroll_screen)
 	ui.close_feed_requested.connect(close_feed)
 	if scroll_viewport != null:
 		ui.set_scroll_texture(scroll_viewport.get_texture())

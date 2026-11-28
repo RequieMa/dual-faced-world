@@ -23,6 +23,9 @@ const STATE_SEARCH := "search"
 
 const ARRIVE_EPSILON := 0.08
 const AUTO_SEEK_RADIUS := 2.0
+const FIRE_AVOID_RADIUS := 4.2
+const WALL_CLEARANCE := 1.2
+const MAX_STATIONARY_SECONDS := 5.0
 const NPC_ACCEL := 5.0
 const NPC_DECEL := 8.0
 const EYE_HEIGHT := 1.45
@@ -51,6 +54,15 @@ var _ignore_until := 0.0
 var _wasted := 0
 var _signal_active := false
 var _seeking_clue_id := ""
+var _fire_points: Array[Vector3] = []
+var _fire_fleeing := false
+var _fire_flee_target := Vector3.INF
+var _fire_escape_target := Vector3.INF
+var _fire_escape_index := 0
+var _nav_min := Vector3.ZERO
+var _nav_max := Vector3.ZERO
+var _has_nav_bounds := false
+var _stationary_time := 0.0
 var _visual_built := false
 
 var _visual_root: Node3D = null
@@ -128,8 +140,13 @@ func tick(delta: float, clues: Array) -> void:
 	if delta <= 0.0:
 		return
 	_now += delta
+	var before := global_position
 	_update_vision_look(delta)
 	_update_vision_visual()
+	if _tick_fire_avoidance(delta):
+		_after_move(before, delta)
+		_update_walk_animation(delta)
+		return
 	match state:
 		STATE_WANDER:
 			_tick_wander(delta, clues)
@@ -139,7 +156,45 @@ func tick(delta: float, clues: Array) -> void:
 			_tick_seek(delta, clues)
 		STATE_SEARCH:
 			_tick_search(delta, clues)
+	_after_move(before, delta)
 	_update_walk_animation(delta)
+
+
+## 房间导航边界：避免 NPC 走到墙边甚至贴墙“面壁”。
+func set_navigation_bounds(room_min: Vector3, room_max: Vector3) -> void:
+	_nav_min = room_min + Vector3(WALL_CLEARANCE, 0, WALL_CLEARANCE)
+	_nav_max = room_max - Vector3(WALL_CLEARANCE, 0, WALL_CLEARANCE)
+	_has_nav_bounds = true
+	_fire_flee_target = Vector3.INF
+	global_position.x = clampf(global_position.x, _nav_min.x, _nav_max.x)
+	global_position.z = clampf(global_position.z, _nav_min.z, _nav_max.z)
+	_target = _clamp_target(_target)
+
+
+func _clamp_target(point: Vector3) -> Vector3:
+	if not _has_nav_bounds:
+		return point
+	return Vector3(clampf(point.x, _nav_min.x, _nav_max.x), point.y,
+		clampf(point.z, _nav_min.z, _nav_max.z))
+
+
+func _after_move(before: Vector3, delta: float) -> void:
+	if _has_nav_bounds and not (_fire_fleeing and _fire_escape_target != Vector3.INF):
+		global_position.x = clampf(global_position.x, _nav_min.x, _nav_max.x)
+		global_position.z = clampf(global_position.z, _nav_min.z, _nav_max.z)
+	var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
+	if moved > 0.004:
+		_stationary_time = 0.0
+		return
+	_stationary_time += delta
+	if _stationary_time < MAX_STATIONARY_SECONDS:
+		return
+	# 原地卡住超过 5 秒：无论当前在 pause/search/避火，都强制换目标。
+	_stationary_time = 0.0
+	_fire_flee_target = Vector3.INF
+	velocity = Vector3.ZERO
+	_pick_waypoint()
+	_set_state(STATE_WANDER)
 
 
 ## 收到玩家激光/截图信号。超出范围或仍在“忽略期”返回 false。
@@ -160,9 +215,10 @@ func _accept_signal(point: Vector3, now: float) -> bool:
 	var at := _now if now < 0.0 else now
 	if at < _ignore_until:
 		return false
-	_target = Vector3(point.x, global_position.y, point.z)
+	_target = _clamp_target(Vector3(point.x, global_position.y, point.z))
 	_signal_active = true
 	_seeking_clue_id = ""
+	_stationary_time = 0.0
 	_set_state(STATE_SEEK)
 	return true
 
@@ -245,6 +301,9 @@ func get_state() -> Dictionary:
 		"look_pitch": _look_pitch,
 		"wasted_signals": _wasted,
 		"ignoring": is_ignoring_signals(),
+		"fire_fleeing": _fire_fleeing,
+		"stationary_time": _stationary_time,
+		"has_nav_bounds": _has_nav_bounds,
 		"vision_range": vision_range,
 		"vision_half_angle": vision_half_angle,
 		"vision_length": _vision_length,
@@ -258,7 +317,7 @@ func _tick_wander(delta: float, clues: Array) -> void:
 		return
 	if _move_toward(_target, speed, delta):
 		_state_time = randf_range(2.2, 4.5) if personality == PERSONALITY_RECKLESS \
-			else randf_range(3.0, 5.5)
+			else randf_range(2.4, 4.6)
 		_set_state(STATE_PAUSE)
 
 
@@ -305,7 +364,7 @@ func _try_seek_visible_clue(clues: Array) -> bool:
 		if global_position.distance_to(point) > AUTO_SEEK_RADIUS:
 			continue
 		if sees_point(point):
-			_target = Vector3(point.x, global_position.y, point.z)
+			_target = _clamp_target(Vector3(point.x, global_position.y, point.z))
 			_seeking_clue_id = String(clue.get("id", ""))
 			_signal_active = false
 			_set_state(STATE_SEEK)
@@ -343,7 +402,10 @@ func _collect_clue(clue: Dictionary) -> void:
 
 
 ## 带加速/减速的移动；被墙/家具挡住时返回 true，让状态机换目标。
-func _move_toward(point: Vector3, move_speed: float, delta: float) -> bool:
+func _move_toward(point: Vector3, move_speed: float, delta: float,
+		ignore_bounds: bool = false) -> bool:
+	if not ignore_bounds:
+		point = _clamp_target(point)
 	var offset := point - global_position
 	offset.y = 0.0
 	var distance := offset.length()
@@ -380,9 +442,61 @@ func _pick_waypoint() -> void:
 		_target = global_position
 		return
 	var index := randi() % _waypoints.size()
-	_target = _waypoints[index]
+	_target = _clamp_target(_waypoints[index])
 	if _target.is_equal_approx(global_position) and _waypoints.size() > 1:
 		_target = _waypoints[(index + 1) % _waypoints.size()]
+
+
+func set_fire_sources(points: Array) -> void:
+	_fire_points.clear()
+	for point in points:
+		_fire_points.append(point)
+
+
+## 固定避火出口：火焰时不再随机轮换目标，避免 NPC 原地转向打转。
+func set_fire_escape_target(point: Vector3) -> void:
+	_fire_escape_target = point
+
+
+func _tick_fire_avoidance(delta: float) -> bool:
+	var nearest := Vector3.INF
+	var nearest_distance := INF
+	for point in _fire_points:
+		var distance := global_position.distance_to(point)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = point
+	if nearest_distance > FIRE_AVOID_RADIUS:
+		_fire_fleeing = false
+		_fire_flee_target = Vector3.INF
+		return false
+	_fire_fleeing = true
+	if _fire_escape_target != Vector3.INF:
+		# 固定目标，不轮换；到达后只需要面朝出口，不再左右转圈。
+		_fire_flee_target = _fire_escape_target
+	else:
+		# 选房间内离火最远的巡逻点；被家具挡住或贴边时轮换下一个安全点。
+		if _fire_flee_target == Vector3.INF or global_position.distance_to(_fire_flee_target) < 0.35 \
+				or _stationary_time > 0.8:
+			_fire_flee_target = _best_fire_escape_target(nearest)
+	_move_toward(_fire_flee_target, maxf(speed * 1.6, 1.8), delta,
+		_fire_escape_target != Vector3.INF)
+	return true
+
+
+func _best_fire_escape_target(fire_point: Vector3) -> Vector3:
+	var candidates: Array[Vector3] = []
+	candidates.append(Vector3((_nav_min.x + _nav_max.x) * 0.5, global_position.y,
+		(_nav_min.z + _nav_max.z) * 0.5))
+	for point in _waypoints:
+		candidates.append(_clamp_target(Vector3(point.x, global_position.y, point.z)))
+	if candidates.is_empty():
+		return _clamp_target(global_position + Vector3(1, 0, 0) * 3.0)
+	# 稳定轮换：优先最远点，卡住后换下一个。
+	candidates.sort_custom(func(a: Vector3, b: Vector3) -> bool:
+		return a.distance_to(fire_point) > b.distance_to(fire_point))
+	_fire_escape_index = (_fire_escape_index + 1) % candidates.size()
+	return candidates[_fire_escape_index]
 
 
 func _set_state(next_state: String) -> void:
