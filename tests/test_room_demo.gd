@@ -85,6 +85,36 @@ func _run_photo_tests() -> void:
 	_check("重复放同一张照片被拒",
 		not bool(late.drop_to_screen(shot, 243.0).get("accepted", true)))
 
+	# 滚动屏展示失败后必须冷却并自动清屏，不能卡在不可用状态。
+	var reset_store = load(PHOTO_STORE).new()
+	var r1: String = reset_store.add_photo("clue", "半张门禁码", "C1", 300.0, {"clue_id": "clue_a"})
+	var r2: String = reset_store.add_photo("clue", "另半张门禁码", "C2", 330.0, {"clue_id": "clue_b"})
+	reset_store.drop_to_screen(r1, 300.0)
+	var failed: Dictionary = reset_store.drop_to_screen(r2, 301.0)
+	_check("滚动屏展示失败进入冷却",
+		not bool(failed.get("accepted", true)) and reset_store.screen_state == "cooldown",
+		str(failed))
+	_check("冷却期间拒绝新的照片",
+		not bool(reset_store.drop_to_screen(r1, 302.0).get("accepted", true)))
+	reset_store.tick(307.0)
+	_check("冷却结束自动重置滚动屏",
+		reset_store.screen_state == "idle" and reset_store.screen_photo_ids.is_empty(),
+		"state=%s ids=%s" % [reset_store.screen_state, reset_store.screen_photo_ids])
+	_check("重置后可以再次放入照片",
+		bool(reset_store.drop_to_screen(r1, 308.0).get("accepted", false)))
+
+	var display_store = load(PHOTO_STORE).new()
+	var display_shot: String = display_store.add_photo("screenshot", "截图 C1", "C1", 400.0,
+		{"focus_point": Vector3(1, 1, -3)})
+	display_store.drop_to_screen(display_shot, 400.0)
+	_check("截图展示进入展示状态", display_store.screen_state == "showing",
+		display_store.screen_state)
+	display_store.tick(406.0)
+	display_store.tick(412.0)
+	_check("截图展示结束后的冷却也会自动重置",
+		display_store.screen_state == "idle" and display_store.screen_photo_ids.is_empty(),
+		"state=%s ids=%s" % [display_store.screen_state, display_store.screen_photo_ids])
+
 
 # --- NPC ----------------------------------------------------------------------
 
@@ -161,6 +191,14 @@ func _run_scene_tests() -> void:
 	_check("摄像头使用广角镜头", demo.feeds[0]["camera"].fov >= 80.0)
 	_check("监控画面启用鱼眼畸变", demo.monitor_ui.uses_fisheye())
 	_check("监控画面有老电视扫描线暗纹", demo.monitor_ui.uses_scanlines())
+	_check("新地图有舞台地台", demo.find_child("StagePlatform", true, false) != null)
+	_check("新地图有后台道具堆", demo.find_child("PropCrate1", true, false) != null)
+	_check("新地图有侧门", demo.find_child("SideDoor", true, false) != null)
+	_check("C4 位于侧门房间", demo.feeds[3]["camera"].global_position.z > -14.0,
+		str(demo.feeds[3]["camera"].global_position))
+	_check("第一人称相机剔除玩家自身模型",
+		(demo.player.camera.cull_mask & (1 << 1)) == 0
+		and demo.player._body_mesh.layers == 2)
 	_check("玩家移动速度已调低", demo.player.WALK_SPEED <= 2.6)
 	var wall_npc = demo.npcs[0]
 	wall_npc.global_position = Vector3(-7.5, 0.0, -18.0)

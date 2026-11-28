@@ -45,6 +45,45 @@ static func load_avatar(path: String, target_height: float = 1.72,
 	return wrapper
 
 
+## 某些 FBX→GLB（例如早期的鸡哥导出）会把世界偏移烘进子网格，
+## 导致 avatar 虽然加载成功却出现在 NPC 节点很远的地方。挂到场景后按真实
+## world AABB 再归一化/居中一次；对已经正确的模型几乎是无操作。
+static func fit_in_parent(avatar: Node3D, target_height: float) -> void:
+	if avatar == null or not avatar.is_inside_tree():
+		return
+	var parent := avatar.get_parent() as Node3D
+	if parent == null:
+		return
+	var bounds := _world_bounds(avatar)
+	if bounds.size.y <= 0.0001:
+		return
+	var scale_factor := target_height / bounds.size.y
+	if absf(scale_factor - 1.0) > 0.001:
+		avatar.scale *= scale_factor
+		bounds = _world_bounds(avatar)
+	var parent_position := parent.global_position
+	var delta_world := Vector3(parent_position.x - bounds.get_center().x,
+		parent_position.y - bounds.position.y, parent_position.z - bounds.get_center().z)
+	var local_delta: Vector3 = parent.global_transform.basis.inverse() * delta_world
+	avatar.position += local_delta
+
+
+static func _world_bounds(root: Node3D) -> AABB:
+	var result := AABB()
+	var has_result := false
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		var aabb := mesh_instance.get_aabb()
+		for corner_index in 8:
+			var point := mesh_instance.global_transform * aabb.get_endpoint(corner_index)
+			if not has_result:
+				result = AABB(point, Vector3.ZERO)
+				has_result = true
+			else:
+				result = result.expand(point)
+	return result
+
+
 ## 模型原始 rest pose 是 T-pose；把上臂放下来，避免 NPC 站着张开双臂。
 ## 只改上臂骨，不碰腿/裙骨，保持模型原有造型。
 static func _apply_relaxed_pose(root: Node3D) -> void:

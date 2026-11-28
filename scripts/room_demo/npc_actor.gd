@@ -12,6 +12,7 @@ extends CharacterBody3D
 signal clue_collected(clue_id: String, position: Vector3)
 signal state_changed(state: String)
 
+const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const PERSONALITY_RECKLESS := "reckless"
 const PERSONALITY_CAUTIOUS := "cautious"
 
@@ -601,6 +602,7 @@ func attach_avatar(avatar: Node3D) -> void:
 	else:
 		_visual_root.add_child(avatar)
 	_avatar = avatar
+	AVATAR_LOADER.fit_in_parent(avatar, 1.72)
 	_disable_shadow_casting(avatar)
 	if _body_mesh != null:
 		_body_mesh.visible = false
