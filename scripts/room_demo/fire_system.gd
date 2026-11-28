@@ -40,6 +40,7 @@ var _volume: MeshInstance3D = null
 var _flames: Array[MeshInstance3D] = []
 var _light: OmniLight3D = null
 var _embers: GPUParticles3D = null
+var _scorch: MeshInstance3D = null
 var _audio: AudioStreamPlayer3D = null
 var _audio_stream: AudioStreamWAV = null
 var _rng := RandomNumberGenerator.new()
@@ -339,6 +340,17 @@ func _build_flames() -> void:
 	_light.light_energy = 2.0
 	_light.omni_range = 7.0
 	add_child(_light)
+	# 地面焦痕随火焰半径扩大，给“正在扩张”一个明确读数。
+	_scorch = MeshInstance3D.new()
+	_scorch.name = "FireScorch"
+	var scorch_mesh := PlaneMesh.new()
+	scorch_mesh.size = Vector2(1, 1)
+	_scorch.mesh = scorch_mesh
+	var scorch_mat := ShaderMaterial.new()
+	scorch_mat.shader = preload("res://shaders/fire_scorch.gdshader")
+	_scorch.material_override = scorch_mat
+	_scorch.position = SOURCE + Vector3(0, 0.025, 0)
+	add_child(_scorch)
 	_build_embers()
 
 
@@ -383,8 +395,8 @@ func _update_volume_uniforms() -> void:
 	material.set_shader_parameter("source_pos", SOURCE)
 	material.set_shader_parameter("fire_radius", maxf(radius, 0.35))
 	material.set_shader_parameter("fire_height", minf(2.5, 1.8 + radius * 0.22))
-	var flame_width := 1.2 + radius * 0.70
-	var flame_height := 2.0 + radius * 0.70
+	var flame_width := 0.9 + radius * 1.15
+	var flame_height := 2.0 + radius * 0.85
 	for index in _flames.size():
 		var flame := _flames[index]
 		if flame == null:
@@ -407,6 +419,8 @@ func _update_volume_uniforms() -> void:
 		_light.omni_range = 5.0 + radius * 1.4
 	if _embers != null:
 		_embers.amount_ratio = clampf(0.25 + intensity * 0.75, 0.0, 1.0)
+	if _scorch != null:
+		_scorch.scale = Vector3(radius * 1.35, 1.0, radius * 1.35)
 
 
 func _build_audio() -> void:

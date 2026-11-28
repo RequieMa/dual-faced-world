@@ -137,51 +137,76 @@ func _build_visual() -> void:
 	_visual.scale = Vector3.ONE * (SIZE / 0.5)
 	add_child(_visual)
 
-	var body := _mesh_instance("Body", _capsule(0.05, 0.2), FUR,
-		Vector3(0, 0.05, 0), Vector3(90, 0, 0))
+	var body := _mesh_instance("Body", _capsule(0.062, 0.28), FUR,
+		Vector3(0, 0.065, 0), Vector3(90, 0, 0))
+	body.scale = Vector3(1.0, 1.0, 1.18)
 	_visual.add_child(body)
 
-	var head := _mesh_instance("Head", _sphere(0.065), FUR,
-		Vector3(0, 0.07, -0.13), Vector3.ZERO)
-	head.scale = Vector3(1.0, 0.85, 1.1)
+	var head := _mesh_instance("Head", _sphere(0.072), FUR,
+		Vector3(0, 0.085, -0.145), Vector3.ZERO)
+	head.scale = Vector3(1.0, 0.88, 1.08)
 	_visual.add_child(head)
-
-	var nose := _mesh_instance("Nose", _sphere(0.022), PINK,
-		Vector3(0, 0.055, -0.198), Vector3.ZERO)
+	var muzzle := _mesh_instance("Muzzle", _sphere(0.040), SHADE.lerp(FUR, 0.55),
+		Vector3(0, 0.060, -0.200), Vector3.ZERO)
+	muzzle.scale = Vector3(1.0, 0.72, 1.15)
+	_visual.add_child(muzzle)
+	var nose := _mesh_instance("Nose", _sphere(0.018), PINK,
+		Vector3(0, 0.065, -0.235), Vector3.ZERO)
 	_visual.add_child(nose)
 
 	for side in [-1, 1]:
-		var ear := _mesh_instance("Ear", _sphere(0.027), SHADE,
-			Vector3(side * 0.04, 0.13, -0.12), Vector3.ZERO)
-		ear.scale = Vector3(0.7, 1.35, 0.55)
+		var ear := _mesh_instance("Ear", _sphere(0.030), SHADE,
+			Vector3(side * 0.040, 0.155, -0.135), Vector3.ZERO)
+		ear.scale = Vector3(0.65, 1.45, 0.55)
 		_visual.add_child(ear)
-		var eye := _mesh_instance("Eye", _sphere(0.012), LINE,
-			Vector3(side * 0.035, 0.08, -0.18), Vector3.ZERO)
+		var ear_inner := _mesh_instance("EarInner", _sphere(0.018), PINK,
+			Vector3(side * 0.040, 0.158, -0.155), Vector3.ZERO)
+		ear_inner.scale = Vector3(0.60, 1.15, 0.35)
+		_visual.add_child(ear_inner)
+		var eye := _mesh_instance("Eye", _sphere(0.014), LINE,
+			Vector3(side * 0.038, 0.095, -0.205), Vector3.ZERO)
 		_visual.add_child(eye)
-		var foot := _mesh_instance("Foot", _capsule(0.012, 0.06), SHADE,
-			Vector3(side * 0.045, 0.015, -0.04), Vector3(0, 0, side * 30))
-		_visual.add_child(foot)
+		var shine := _mesh_instance("EyeShine", _sphere(0.0045), Color(1, 1, 1),
+			Vector3(side * 0.041, 0.099, -0.218), Vector3.ZERO)
+		_visual.add_child(shine)
+		# 前后肢，增加参考图里的四肢轮廓。
+		var foreleg := _mesh_instance("Foreleg", _capsule(0.014, 0.09), SHADE,
+			Vector3(side * 0.050, 0.040, -0.060), Vector3(0, 0, side * 24))
+		_visual.add_child(foreleg)
+		var hindleg := _mesh_instance("Hindleg", _capsule(0.018, 0.11), SHADE,
+			Vector3(side * 0.055, 0.045, 0.070), Vector3(0, 0, side * 28))
+		_visual.add_child(hindleg)
 
 	_tail = Node3D.new()
 	_tail.name = "Tail"
-	_tail.position = Vector3(0, 0.06, 0.12)
+	_tail.position = Vector3(0, 0.075, 0.135)
 	_visual.add_child(_tail)
-	for index in 4:
-		var t := float(index) / 3.0
-		var tuft := _mesh_instance("TailTuft", _sphere(0.04 - t * 0.014), SHADE.lerp(PINK, t * 0.55),
-			Vector3(0, t * 0.10, t * 0.11), Vector3.ZERO)
-		tuft.scale = Vector3(1.0, 0.75, 1.15)
+	# 向上卷起的分段尾巴，尾端逐渐变宽再收尖。
+	for index in 6:
+		var t := float(index) / 5.0
+		var tuft := _mesh_instance("TailTuft", _sphere(0.040 + sin(t * PI) * 0.020), SHADE.lerp(PINK, t * 0.35),
+			Vector3(0, 0.02 + t * 0.22, 0.02 + t * 0.08), Vector3.ZERO)
+		tuft.scale = Vector3(1.0, 0.95, 1.25)
 		_tail.add_child(tuft)
 
 	for side in [-1, 1]:
 		var membrane := MeshInstance3D.new()
 		membrane.name = "Membrane"
-		var plane := PlaneMesh.new()
-		plane.size = Vector2(0.18, 0.13)
-		membrane.mesh = plane
-		membrane.position = Vector3(side * 0.10, 0.06, -0.01)
-		membrane.rotation_degrees.z = side * 8.0
+		# 三角形翼膜：肩 → 翼尖 → 胯，比矩形 PlaneMesh 更接近参考。
+		var mesh := ArrayMesh.new()
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+			Vector3(0.0, 0.075, -0.08),
+			Vector3(side * 0.22, 0.055, -0.02),
+			Vector3(0.0, 0.055, 0.13),
+		])
+		arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2])
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		membrane.mesh = mesh
 		var material := _material(SHADE.lerp(FUR, 0.25), true)
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.albedo_color.a = 0.82
 		membrane.material_override = material
 		_visual.add_child(membrane)
 		if side < 0:

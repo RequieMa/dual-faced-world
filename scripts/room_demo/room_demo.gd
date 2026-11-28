@@ -659,6 +659,11 @@ func _build_environment() -> void:
 	environment.ambient_light_color = Color(0.32, 0.36, 0.46)
 	environment.ambient_light_energy = 0.72
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	environment.glow_enabled = true
+	environment.glow_intensity = 0.75
+	environment.glow_strength = 1.0
+	environment.glow_bloom = 0.15
+	environment.glow_hdr_threshold = 0.65
 	var world_env := WorldEnvironment.new()
 	world_env.environment = environment
 	add_child(world_env)
@@ -1305,6 +1310,8 @@ func _build_npcs() -> void:
 	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), stage_waypoints)
 	_world.add_child(reckless)
 	reckless.set_navigation_bounds(Vector3(-15, 0, -27), Vector3(-2, 0, -13))
+	# 固定跑向舞台右侧门洞附近，避免在火里左右换目标打转。
+	reckless.set_fire_escape_target(Vector3(-2.4, 0, -18.0))
 	reckless.clue_collected.connect(_on_clue_collected)
 	var chicken := AVATAR_LOADER.load_avatar(CHICKEN_GLB, 1.72, 180.0)
 	if chicken != null:

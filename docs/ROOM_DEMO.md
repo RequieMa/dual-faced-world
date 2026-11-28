@@ -103,7 +103,11 @@ Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 126 checks
+# 独立对照 demo（F6 / --scene 运行）
+godot --path . --scene scenes/demo_squirrel.tscn
+godot --path . --scene scenes/demo_fire.tscn
+
+godot --headless --path . --script tests/test_room_demo.gd   # 128 checks
 godot --headless --path . --script tests/run_all.gd          # 29 suites
 ```
 

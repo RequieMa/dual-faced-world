@@ -57,6 +57,7 @@ var _seeking_clue_id := ""
 var _fire_points: Array[Vector3] = []
 var _fire_fleeing := false
 var _fire_flee_target := Vector3.INF
+var _fire_escape_target := Vector3.INF
 var _fire_escape_index := 0
 var _nav_min := Vector3.ZERO
 var _nav_max := Vector3.ZERO
@@ -178,7 +179,7 @@ func _clamp_target(point: Vector3) -> Vector3:
 
 
 func _after_move(before: Vector3, delta: float) -> void:
-	if _has_nav_bounds:
+	if _has_nav_bounds and not (_fire_fleeing and _fire_escape_target != Vector3.INF):
 		global_position.x = clampf(global_position.x, _nav_min.x, _nav_max.x)
 		global_position.z = clampf(global_position.z, _nav_min.z, _nav_max.z)
 	var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
@@ -401,8 +402,10 @@ func _collect_clue(clue: Dictionary) -> void:
 
 
 ## 带加速/减速的移动；被墙/家具挡住时返回 true，让状态机换目标。
-func _move_toward(point: Vector3, move_speed: float, delta: float) -> bool:
-	point = _clamp_target(point)
+func _move_toward(point: Vector3, move_speed: float, delta: float,
+		ignore_bounds: bool = false) -> bool:
+	if not ignore_bounds:
+		point = _clamp_target(point)
 	var offset := point - global_position
 	offset.y = 0.0
 	var distance := offset.length()
@@ -450,6 +453,11 @@ func set_fire_sources(points: Array) -> void:
 		_fire_points.append(point)
 
 
+## 固定避火出口：火焰时不再随机轮换目标，避免 NPC 原地转向打转。
+func set_fire_escape_target(point: Vector3) -> void:
+	_fire_escape_target = point
+
+
 func _tick_fire_avoidance(delta: float) -> bool:
 	var nearest := Vector3.INF
 	var nearest_distance := INF
@@ -463,12 +471,16 @@ func _tick_fire_avoidance(delta: float) -> bool:
 		_fire_flee_target = Vector3.INF
 		return false
 	_fire_fleeing = true
-	# 选房间内离火最远的巡逻点；被家具挡住或贴边时轮换下一个安全点，
-	# 避免 NPC 被推到墙角/道具后面原地不动。
-	if _fire_flee_target == Vector3.INF or global_position.distance_to(_fire_flee_target) < 0.35 \
-			or _stationary_time > 0.8:
-		_fire_flee_target = _best_fire_escape_target(nearest)
-	_move_toward(_fire_flee_target, maxf(speed * 1.6, 1.8), delta)
+	if _fire_escape_target != Vector3.INF:
+		# 固定目标，不轮换；到达后只需要面朝出口，不再左右转圈。
+		_fire_flee_target = _fire_escape_target
+	else:
+		# 选房间内离火最远的巡逻点；被家具挡住或贴边时轮换下一个安全点。
+		if _fire_flee_target == Vector3.INF or global_position.distance_to(_fire_flee_target) < 0.35 \
+				or _stationary_time > 0.8:
+			_fire_flee_target = _best_fire_escape_target(nearest)
+	_move_toward(_fire_flee_target, maxf(speed * 1.6, 1.8), delta,
+		_fire_escape_target != Vector3.INF)
 	return true
 
 
