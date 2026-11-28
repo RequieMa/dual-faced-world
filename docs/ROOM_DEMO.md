@@ -39,7 +39,8 @@
   不受畸变影响。放大画面有“← 返回 4 路画面”按钮，`Esc`/退格也可退出放大（站起仍用 `F`）。
 - **烧毁画面**：机位过载后画面切换成动态雪花噪声，不保留最后一帧。
 - **摄像头**：每房间 2 台，面对面摆放；机位贴墙装在接近天花板的角落（y≈2.7），
-  俯视房间，画面带广角桶形/鱼眼畸变，所以画面里能看到对面的摄像头模型和弯曲的墙线。
+  俯视房间，画面带广角桶形/鱼眼畸变，并叠加老电视的扫描暗纹、颗粒和边缘压暗，
+  所以画面里能看到对面的摄像头模型和弯曲的墙线。
 - **停留/过载**：每台停留 **45 秒**（原设定“几分钟”缩成 demo 秒数），超时过载烧毁；
   切走后 **8 秒**冷却。烧毁是本次运行内永久，重开 `R` 才恢复。
 - **NPC**：`reckless`（莽撞）跑得比谨慎快、视锥较窄，收到激光会冲过去，找不到线索就跑开；
@@ -66,7 +67,7 @@
 | NPC 行为/视锥 | `scripts/room_demo/npc_actor.gd` |
 | Avatar 运行时加载 / 归一化 / toon 材质 | `scripts/room_demo/avatar_loader.gd` |
 | 二次元 toon / 描边 shader | `shaders/anime_toon.gdshader`、`shaders/anime_outline.gdshader` |
-| 监控画面鱼眼 shader | `shaders/fisheye_feed.gdshader` |
+| 监控画面鱼眼 + 老电视扫描线 shader | `shaders/fisheye_feed.gdshader` |
 | Blender → GLB 导出脚本 | `tools/blender/export_character.py` |
 | 照片仓库/组合 | `scripts/room_demo/photo_store.gd` |
 | HUD / 照片仓库 / 拖放区 | `scripts/room_demo/room_ui.gd` |
@@ -83,8 +84,8 @@ Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 71 checks
-godot --headless --path . --script tests/run_all.gd          # 26 suites
+godot --headless --path . --script tests/test_room_demo.gd   # 88 checks
+godot --headless --path . --script tests/run_all.gd          # 28 suites
 ```
 
 交互自检：

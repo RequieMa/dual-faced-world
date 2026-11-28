@@ -160,6 +160,7 @@ func _run_scene_tests() -> void:
 	_check("摄像头高度接近天花板", demo.feeds[0]["camera"].global_position.y >= 2.6)
 	_check("摄像头使用广角镜头", demo.feeds[0]["camera"].fov >= 80.0)
 	_check("监控画面启用鱼眼畸变", demo.monitor_ui.uses_fisheye())
+	_check("监控画面有老电视扫描线暗纹", demo.monitor_ui.uses_scanlines())
 	_check("玩家移动速度已调低", demo.player.WALK_SPEED <= 2.6)
 	var wall_npc = demo.npcs[0]
 	wall_npc.global_position = Vector3(-7.5, 0.0, -18.0)
