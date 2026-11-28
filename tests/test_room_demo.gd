@@ -191,15 +191,20 @@ func _run_scene_tests() -> void:
 
 	_check("可以选中 C1", demo.select_feed("C1"))
 	_check("C1 成为当前机位", String(demo.camera_session.get_state().get("current", "")) == "C1")
-	var laser_result: Dictionary = demo.fire_laser("C1", Vector2(0.5, 0.5))
+	var click_uv := Vector2(0.7, 0.4)
+	var laser_result: Dictionary = demo.fire_laser("C1", click_uv)
 	var c1_feed: Dictionary = demo._feed_by_id("C1")
 	var c1_camera: Camera3D = c1_feed["camera"]
 	var c1_viewport: SubViewport = c1_feed["viewport"]
 	_check("激光从当前机位相机出发",
 		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
-	var expected_dir: Vector3 = c1_camera.project_ray_normal(Vector2(0.5, 0.5) * Vector2(c1_viewport.size)).normalized()
+	var expected_dir: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
 	_check("激光方向来自屏幕点投影",
 		(laser_result.get("direction", Vector3.ZERO) as Vector3).dot(expected_dir) > 0.999)
+	var laser_vec: Vector3 = (laser_result.get("point", Vector3.ZERO) as Vector3) - (laser_result.get("origin", Vector3.ZERO) as Vector3)
+	_check("激光落点沿该屏幕方向",
+		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_dir) > 0.999,
+		str(laser_vec))
 	demo.tick(999.0)
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))
 	_check("烧毁画面显示雪花", demo.monitor_ui.is_burned_visual("C1"))
