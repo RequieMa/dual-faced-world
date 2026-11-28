@@ -70,7 +70,7 @@ func tick(delta: float) -> void:
 		_accum -= dt
 		steps += 1
 	if steps > 0:
-		_update_texture()
+		# 体积 shader 用程序化 FBM，不再每帧重建/上传 3D 纹理。
 		_update_volume_uniforms()
 		_update_audio()
 
@@ -305,8 +305,8 @@ func _build_volume() -> void:
 	_volume.position = (BOX_MIN + BOX_MAX) * 0.5
 	_volume.material_override = material
 	_volume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# 体积层保留为火光/热雾；可见火舌用交叉面片，避免高位机位只看到一个发光团。
-	_volume.visible = false
+	# 参考 procedural-fire：真的用体积 raymarch 出火焰，而不是发光方盒。
+	_volume.visible = true
 	add_child(_volume)
 	_build_flames()
 
@@ -323,7 +323,7 @@ func _build_flames() -> void:
 			Vector3(0.42, 0, -0.18), Vector3(0.08, 0, 0.36)]
 		flame.position = SOURCE + offsets[index] + Vector3(0, 1.25, 0)
 		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		flame.visible = true
+		flame.visible = false
 		var material := ShaderMaterial.new()
 		material.shader = FLAME_SHADER
 		material.set_shader_parameter("blackbody_lut", _blackbody_lut)
@@ -394,7 +394,7 @@ func _update_volume_uniforms() -> void:
 	material.set_shader_parameter("intensity", intensity)
 	material.set_shader_parameter("source_pos", SOURCE)
 	material.set_shader_parameter("fire_radius", maxf(radius, 0.35))
-	material.set_shader_parameter("fire_height", minf(2.5, 1.8 + radius * 0.22))
+	material.set_shader_parameter("fire_height", minf(2.55, 1.8 + radius * 0.20))
 	var flame_width := 0.9 + radius * 1.15
 	var flame_height := 2.0 + radius * 0.85
 	for index in _flames.size():

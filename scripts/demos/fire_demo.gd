@@ -67,14 +67,47 @@ func _build_stage() -> void:
 	wall.material_override = wall_mat
 	wall.position = Vector3(-8.5, 2.5, -27)
 	add_child(wall)
+	_build_campfire()
+
+
+func _build_campfire() -> void:
+	var wood_mat := StandardMaterial3D.new()
+	wood_mat.albedo_color = Color(0.09, 0.055, 0.035)
+	wood_mat.roughness = 1.0
+	for index in 4:
+		var log := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.16
+		mesh.bottom_radius = 0.20
+		mesh.height = 2.5
+		log.mesh = mesh
+		log.material_override = wood_mat
+		log.position = Vector3(-8.5, 0.18, -20.0)
+		log.rotation_degrees = Vector3(90, index * 45.0, 12.0)
+		add_child(log)
+	# 一圈石头，给火焰一个参考场景。
+	for index in 12:
+		var angle := TAU * float(index) / 12.0
+		var stone := MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.20 + 0.05 * sin(index * 2.3)
+		sphere.height = sphere.radius * 1.4
+		stone.mesh = sphere
+		var stone_mat := StandardMaterial3D.new()
+		stone_mat.albedo_color = Color(0.22, 0.21, 0.20)
+		stone_mat.roughness = 1.0
+		stone.material_override = stone_mat
+		stone.position = Vector3(-8.5 + cos(angle) * 1.35, 0.18,
+			-20.0 + sin(angle) * 1.35)
+		add_child(stone)
 
 
 func _build_camera() -> void:
 	_camera = Camera3D.new()
-	_camera.fov = 52.0
-	_camera.position = Vector3(-3.8, 2.0, -14.2)
+	_camera.fov = 38.0
+	_camera.position = Vector3(-8.5, 1.35, -12.4)
 	add_child(_camera)
-	_camera.look_at(Vector3(-8.5, 1.1, -20.0))
+	_camera.look_at(Vector3(-8.5, 0.9, -20.0))
 
 
 func _build_ui() -> void:
@@ -90,9 +123,9 @@ func _build_ui() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	if _camera != null:
-		var angle := sin(_time * 0.18) * 0.16
-		_camera.position = Vector3(-3.8 - sin(angle) * 1.2, 2.0, -14.2 + cos(angle) * 0.8)
-		_camera.look_at(Vector3(-8.5, 1.1, -20.0))
+		var angle := sin(_time * 0.18) * 0.10
+		_camera.position = Vector3(-8.5 - sin(angle) * 0.7, 1.35, -12.4)
+		_camera.look_at(Vector3(-8.5, 0.9, -20.0))
 	if fire != null:
 		fire.tick(delta)
 		if _label != null:
