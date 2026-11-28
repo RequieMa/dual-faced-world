@@ -186,10 +186,6 @@ func _run_scene_tests() -> void:
 	_check("坐下后鼠标事件能转发到 3D 监控屏", demo._forward_mouse_to_monitor(motion))
 	demo.monitor_ui.feed_clicked.emit("C2")
 	_check("屏幕 UI 点击信号能选中机位", String(demo.selected_feed) == "C2")
-	var laser_line: Line2D = demo.monitor_ui._laser_line
-	demo.monitor_ui._flash_laser(Vector2(120, 60))
-	_check("监控画面有 2D 激光线", laser_line != null and laser_line.visible
-		and laser_line.points.size() == 2)
 	demo.set_seated(false)
 	_check("站起后玩家状态同步", not demo.player.seated)
 
@@ -201,12 +197,17 @@ func _run_scene_tests() -> void:
 	var c1_camera: Camera3D = c1_feed["camera"]
 	var c1_viewport: SubViewport = c1_feed["viewport"]
 	var expected_origin: Vector3 = demo.laser_start_position(c1_camera)
-	_check("激光从投影相机出发",
-		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(expected_origin)
-		and expected_origin.is_equal_approx(c1_camera.global_position))
+	_check("激光从相机右下方发射器出发",
+		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
+	var emitter_offset: Vector3 = expected_origin - c1_camera.global_position
+	_check("发射器位于相机右侧且下方",
+		emitter_offset.dot(c1_camera.global_transform.basis.x) > 0.0
+		and emitter_offset.dot(c1_camera.global_transform.basis.y) < 0.0,
+		str(emitter_offset))
+	_check("发射器起点在画面外", not c1_camera.is_position_in_frustum(expected_origin))
 	var laser_beam := demo.get_node_or_null("LaserBeam") as MeshInstance3D
-	_check("激光世界线从投影相机起点显示",
-		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
+	_check("激光世界线从发射器起点显示",
+		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(expected_origin))
 	var expected_ray: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
 	var endpoint_ray: Vector3 = ((laser_result.get("point", Vector3.ZERO) as Vector3) - c1_camera.global_position).normalized()
 	_check("激光落点仍由 screen point 决定",

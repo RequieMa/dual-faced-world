@@ -43,6 +43,8 @@ const MONITOR_CENTER := Vector3(0, 1.55, -5.81)
 const MONITOR_SIZE := Vector2(3.52, 2.2)
 # Camera3D 比可见相机模型前移一点，避免镜头被自己的模型挡住。
 const CAMERA_LENS_OFFSET := 0.35
+# 激光发射器相对相机的局部位置：右侧/下方，略微在镜头前，投影到画面外。
+const LASER_EMITTER_OFFSET := Vector3(0.32, -0.22, -0.16)
 
 ## 观察室净高 3m；摄像头贴墙装在接近天花板的墙角（y≈2.72），
 ## 俯视房间中心/地面，而不是平视。两台面对面，画面里能看到对面的机位模型。
@@ -262,8 +264,7 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		point = hit.position
-	# 世界光束从投影相机出发；本机位画面里它会缩成一个命中点，
-	# 监控 HUD 另画一条屏幕中心→点击点的 2D 线作为可读性标注。
+	# 激光从相机右下方的发射器出发；起点在画面外，射线进入画面指向命中点。
 	var origin: Vector3 = laser_start_position(camera)
 	var direction: Vector3 = (point - origin).normalized()
 	_spawn_beam(origin, point)
@@ -281,18 +282,16 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	return last_laser
 
 
-## 激光世界线/光束的起点：当前机位 Camera3D 的投影位置。
-## 注意：相机模型为了不自遮挡被前移了 CAMERA_LENS_OFFSET，但物理射线必须从投影相机出发；
-## 从模型后方出发会让本机位画面出现一条从画面外斜进来的错误线。
+## 激光发射器位置：相机局部右下方（画面外），不是镜头本身。
 func laser_start_position(camera: Camera3D) -> Vector3:
-	return camera.global_position
+	return camera.to_global(LASER_EMITTER_OFFSET)
 
 
 func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	var total := from.distance_to(to)
 	if total <= 0.05:
 		return
-	# 无厚度世界线：顶点是相机模型和命中点，避免体积光束在相机内糊屏/起点偏移。
+	# 无厚度世界线：顶点是发射器和命中点，起点在画面外，本机位也能看到入画射线。
 	var line_mesh := ImmediateMesh.new()
 	var line_material := StandardMaterial3D.new()
 	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -301,7 +300,7 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	line_material.emission = Color(1.0, 0.04, 0.01)
 	line_material.emission_energy_multiplier = 8.0
 	line_mesh.surface_begin(Mesh.PRIMITIVE_LINES, line_material)
-	# 世界线两个顶点：from 是相机模型起点，to 是命中点；不要再加偏移。
+	# 世界线两个顶点：from 是发射器，to 是命中点；不要再加偏移。
 	line_mesh.surface_add_vertex(from)
 	line_mesh.surface_add_vertex(to)
 	line_mesh.surface_end()
