@@ -23,6 +23,7 @@ const STATE_SEARCH := "search"
 
 const ARRIVE_EPSILON := 0.08
 const AUTO_SEEK_RADIUS := 2.0
+const FIRE_AVOID_RADIUS := 4.2
 const NPC_ACCEL := 5.0
 const NPC_DECEL := 8.0
 const EYE_HEIGHT := 1.45
@@ -51,6 +52,8 @@ var _ignore_until := 0.0
 var _wasted := 0
 var _signal_active := false
 var _seeking_clue_id := ""
+var _fire_points: Array[Vector3] = []
+var _fire_fleeing := false
 var _visual_built := false
 
 var _visual_root: Node3D = null
@@ -130,6 +133,9 @@ func tick(delta: float, clues: Array) -> void:
 	_now += delta
 	_update_vision_look(delta)
 	_update_vision_visual()
+	if _tick_fire_avoidance(delta):
+		_update_walk_animation(delta)
+		return
 	match state:
 		STATE_WANDER:
 			_tick_wander(delta, clues)
@@ -245,6 +251,7 @@ func get_state() -> Dictionary:
 		"look_pitch": _look_pitch,
 		"wasted_signals": _wasted,
 		"ignoring": is_ignoring_signals(),
+		"fire_fleeing": _fire_fleeing,
 		"vision_range": vision_range,
 		"vision_half_angle": vision_half_angle,
 		"vision_length": _vision_length,
@@ -383,6 +390,33 @@ func _pick_waypoint() -> void:
 	_target = _waypoints[index]
 	if _target.is_equal_approx(global_position) and _waypoints.size() > 1:
 		_target = _waypoints[(index + 1) % _waypoints.size()]
+
+
+func set_fire_sources(points: Array) -> void:
+	_fire_points.clear()
+	for point in points:
+		_fire_points.append(point)
+
+
+func _tick_fire_avoidance(delta: float) -> bool:
+	var nearest := Vector3.INF
+	var nearest_distance := INF
+	for point in _fire_points:
+		var distance := global_position.distance_to(point)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = point
+	if nearest_distance > FIRE_AVOID_RADIUS:
+		_fire_fleeing = false
+		return false
+	_fire_fleeing = true
+	var away := global_position - nearest
+	away.y = 0.0
+	if away.length_squared() < 0.001:
+		away = Vector3(1, 0, 0)
+	var flee_target := global_position + away.normalized() * 3.0
+	_move_toward(flee_target, maxf(speed * 1.6, 1.8), delta)
+	return true
 
 
 func _set_state(next_state: String) -> void:

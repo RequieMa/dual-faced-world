@@ -8,6 +8,7 @@ extends Node3D
 
 signal camera_threat_changed(camera_id: String, threatened: bool)
 
+const FLAME_SHADER := preload("res://shaders/fire_flames.gdshader")
 const GRID := Vector3i(20, 24, 20)
 const BOX_MIN := Vector3(-10.0, 0.0, -22.0)
 # 体积顶面略低于摄像头（y≈2.82），这样高位机位在体积外也能看到火焰的正面/顶面；
@@ -37,6 +38,7 @@ var _time := 0.0
 var _texture: ImageTexture3D = null
 var _blackbody_lut: ImageTexture = null
 var _volume: MeshInstance3D = null
+var _flames: Array[MeshInstance3D] = []
 var _audio: AudioStreamPlayer3D = null
 var _audio_stream: AudioStreamWAV = null
 var _rng := RandomNumberGenerator.new()
@@ -79,6 +81,13 @@ func threatens_camera(camera_position: Vector3) -> bool:
 	if flat.length() > radius + CAMERA_BURN_RADIUS:
 		return false
 	return camera_position.y <= BOX_MAX.y + 0.8
+
+
+func threatens_point(point: Vector3) -> bool:
+	if age < 1.0:
+		return false
+	var flat := Vector2(point.x - SOURCE.x, point.z - SOURCE.z)
+	return flat.length() <= radius and point.y <= BOX_MAX.y + 0.8
 
 
 ## 给飞鼠的火焰敏感点：火心 + 扩张半径上的四个采样点。
@@ -252,6 +261,9 @@ func _build_texture() -> void:
 func _update_texture() -> void:
 	if _texture == null:
 		return
+	# 可见火舌走交叉面片；体积层隐藏时不重建 20 张 3D 切片，避免无谓上传。
+	if _volume != null and not _volume.visible:
+		return
 	var slices: Array[Image] = []
 	for z in GRID.z:
 		var image := Image.create(GRID.x, GRID.y, false, Image.FORMAT_RGBA8)
@@ -284,7 +296,30 @@ func _build_volume() -> void:
 	_volume.position = (BOX_MIN + BOX_MAX) * 0.5
 	_volume.material_override = material
 	_volume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# 3D raymarch 保留为底层实验/诊断层；可见火舌用更稳定的交叉面片。
+	_volume.visible = false
 	add_child(_volume)
+	_build_flames()
+
+
+func _build_flames() -> void:
+	for index in 3:
+		var flame := MeshInstance3D.new()
+		flame.name = "Flame_%d" % index
+		var quad := QuadMesh.new()
+		quad.size = Vector2(1.5, 2.5)
+		flame.mesh = quad
+		flame.rotation_degrees.y = index * 60.0
+		flame.position = SOURCE + Vector3(0, 1.25, 0)
+		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var material := ShaderMaterial.new()
+		material.shader = FLAME_SHADER
+		material.set_shader_parameter("blackbody_lut", _blackbody_lut)
+		material.set_shader_parameter("intensity", 0.0)
+		material.set_shader_parameter("seed", float(index) * 1.7)
+		flame.material_override = material
+		add_child(flame)
+		_flames.append(flame)
 
 
 func _update_volume_uniforms() -> void:
@@ -292,6 +327,16 @@ func _update_volume_uniforms() -> void:
 		return
 	var material := _volume.material_override as ShaderMaterial
 	material.set_shader_parameter("intensity", intensity)
+	var flame_width := 0.75 + radius * 0.32
+	var flame_height := 1.7 + radius * 0.45
+	for index in _flames.size():
+		var flame := _flames[index]
+		if flame == null:
+			continue
+		flame.scale = Vector3(flame_width, flame_height / 2.5, 1.0)
+		flame.position = SOURCE + Vector3(0, flame_height * 0.5, 0)
+		var flame_material := flame.material_override as ShaderMaterial
+		flame_material.set_shader_parameter("intensity", intensity * (0.82 + 0.18 * sin(age * 2.0 + index)))
 
 
 func _build_audio() -> void:

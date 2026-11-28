@@ -62,9 +62,11 @@ func _run_photo_tests() -> void:
 	var first: Dictionary = store.drop_to_screen(a, 104.0)
 	_check("第一张照片可放上滚动屏", bool(first.get("accepted", false)))
 	var second: Dictionary = store.drop_to_screen(b, 105.0)
-	_check("短间隔的两张线索照片能组合", bool(second.get("combined", false)), str(second))
-	_check("组合结果是门禁码", String(second.get("code", "")) == "A-317")
-	var combined_photo: Dictionary = store.find_photo(String(second.get("photo_id", "")))
+	_check("可以继续放入第二张照片", bool(second.get("accepted", false)))
+	var sent: Dictionary = store.send_screen(106.0)
+	_check("点击发送后两张线索照片能组合", bool(sent.get("combined", false)), str(sent))
+	_check("组合结果是门禁码", String(sent.get("code", "")) == "A-317")
+	var combined_photo: Dictionary = store.find_photo(String(sent.get("photo_id", "")))
 	_check("组合产物进入照片仓库", not combined_photo.is_empty())
 	_check("组合产物类型是 combined", String(combined_photo.get("kind", "")) == "combined")
 
@@ -72,26 +74,37 @@ func _run_photo_tests() -> void:
 	var c: String = late.add_photo("clue", "半张门禁码", "C1", 200.0, {"clue_id": "clue_a"})
 	var d: String = late.add_photo("clue", "另半张门禁码", "C2", 230.0, {"clue_id": "clue_b"})
 	late.drop_to_screen(c, 201.0)
-	var too_late: Dictionary = late.drop_to_screen(d, 202.0)
-	_check("间隔太久不组合", not bool(too_late.get("combined", false)), str(too_late))
+	late.drop_to_screen(d, 202.0)
+	var late_sent: Dictionary = late.send_screen(203.0)
+	_check("不再限制照片间隔，发送时仍可组合", bool(late_sent.get("combined", false)), str(late_sent))
 
 	var shot: String = late.add_photo("screenshot", "截图 C1", "C1", 240.0,
 		{"focus_point": Vector3(1, 1, -3)})
 	var shot_result: Dictionary = late.drop_to_screen(shot, 241.0)
 	_check("截图照片可以放上滚动屏", bool(shot_result.get("accepted", false)))
-	_check("截图照片标记为 screenshot", bool(shot_result.get("screenshot", false)))
+	var shot_sent: Dictionary = late.send_screen(242.0)
+	_check("发送截图后标记为 screenshot", bool(shot_sent.get("screenshot", false)))
 	_check("不存在的照片不能放上滚动屏",
-		not bool(late.drop_to_screen("photo_missing", 242.0).get("accepted", true)))
+		not bool(late.drop_to_screen("photo_missing", 243.0).get("accepted", true)))
 	_check("重复放同一张照片被拒",
-		not bool(late.drop_to_screen(shot, 243.0).get("accepted", true)))
+		not bool(late.drop_to_screen(shot, 244.0).get("accepted", true)))
 
-	# 滚动屏展示失败后必须冷却并自动清屏，不能卡在不可用状态。
+	var hint_store = load(PHOTO_STORE).new()
+	var water_id: String = hint_store.add_photo("water", "水桶", "C3", 250.0)
+	var blanket_id: String = hint_store.add_photo("blanket", "湿被子", "C3", 251.0)
+	hint_store.drop_to_screen(water_id, 250.0)
+	hint_store.drop_to_screen(blanket_id, 251.0)
+	var hint_sent: Dictionary = hint_store.send_screen(252.0)
+	_check("水和被子发送后给出组合提示",
+		bool(hint_sent.get("accepted", false)) and String(hint_sent.get("hint", "")) == "wet_blanket",
+		str(hint_sent))
+
+	# 发送失败后必须冷却并自动清屏，不能卡在不可用状态。
 	var reset_store = load(PHOTO_STORE).new()
 	var r1: String = reset_store.add_photo("clue", "半张门禁码", "C1", 300.0, {"clue_id": "clue_a"})
-	var r2: String = reset_store.add_photo("clue", "另半张门禁码", "C2", 330.0, {"clue_id": "clue_b"})
 	reset_store.drop_to_screen(r1, 300.0)
-	var failed: Dictionary = reset_store.drop_to_screen(r2, 301.0)
-	_check("滚动屏展示失败进入冷却",
+	var failed: Dictionary = reset_store.send_screen(301.0)
+	_check("无法识别的发送进入冷却",
 		not bool(failed.get("accepted", true)) and reset_store.screen_state == "cooldown",
 		str(failed))
 	_check("冷却期间拒绝新的照片",
@@ -107,11 +120,11 @@ func _run_photo_tests() -> void:
 	var display_shot: String = display_store.add_photo("screenshot", "截图 C1", "C1", 400.0,
 		{"focus_point": Vector3(1, 1, -3)})
 	display_store.drop_to_screen(display_shot, 400.0)
-	_check("截图展示进入展示状态", display_store.screen_state == "showing",
+	var display_sent: Dictionary = display_store.send_screen(401.0)
+	_check("截图发送进入冷却", display_store.screen_state == "cooldown" and bool(display_sent.get("screenshot", false)),
 		display_store.screen_state)
 	display_store.tick(406.0)
-	display_store.tick(412.0)
-	_check("截图展示结束后的冷却也会自动重置",
+	_check("截图发送后的冷却也会自动重置",
 		display_store.screen_state == "idle" and display_store.screen_photo_ids.is_empty(),
 		"state=%s ids=%s" % [display_store.screen_state, display_store.screen_photo_ids])
 
@@ -160,6 +173,15 @@ func _run_npc_tests() -> void:
 	_check("谨慎 NPC 不会因为跑空而忽略信号",
 		cautious.receive_signal(Vector3(0.5, 0, 0)), str(cautious.get_state()))
 
+	var fire_npc = load(NPC_SCRIPT).new()
+	root.add_child(fire_npc)
+	fire_npc.configure("npc_fire", "reckless", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
+	fire_npc.set_fire_sources([Vector3(1.0, 0, 0)])
+	fire_npc.tick(0.25, [])
+	_check("NPC 会远离火焰", bool(fire_npc.get_state().get("fire_fleeing", false)),
+		str(fire_npc.get_state()))
+	fire_npc.queue_free()
+
 	reckless.queue_free()
 	cautious.queue_free()
 
@@ -188,6 +210,25 @@ func _run_scene_tests() -> void:
 	_check("场景有程序化火焰系统", demo.fire_system != null)
 	_check("火焰有 3D 体积纹理", demo.fire_system != null and demo.fire_system._texture != null)
 	_check("火焰有程序化音频", demo.fire_system != null and demo.fire_system._audio != null)
+	_check("火焰有可见火舌层", demo.fire_system != null and demo.fire_system._flames.size() > 0)
+	_check("场景有水源和被子", demo._hintables.size() >= 3)
+	_check("场景有通往观察区的检修通道", demo.find_child("AccessCorridorFloor", true, false) != null)
+	_check("滚动屏有发送信号", demo.ui.has_signal("scroll_send_requested"))
+	demo.player.apply_wet(5.0)
+	_check("玩家可以打湿自己", demo.player.is_fire_protected()
+		and is_equal_approx(demo.player.fire_protection_time, 5.0))
+	demo.player.apply_wet_blanket(30.0)
+	_check("玩家可以披湿被子 30 秒", demo.player.fire_protection_time >= 29.0)
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(-6.4, 0.0, -2.2)
+	_check("靠近水桶按 E 可以打湿", demo._try_hazard_interaction()
+		and demo.player.fire_protection_kind == "wet")
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(8.2, 0.0, -20.2)
+	_check("靠近被子按 E 可以披上", demo._try_hazard_interaction()
+		and demo.player.fire_protection_kind == "blanket")
+	demo.player.global_position = Vector3(1.2, 0.0, -1.8)
+	demo.player.fire_protection_time = 0.0
 	_check("NPC 使用带碰撞的 CharacterBody3D", demo.npcs[0] is CharacterBody3D
 		and demo.npcs[0].get_node_or_null("NpcCollision") != null)
 	_check("摄像头高度接近天花板", demo.feeds[0]["camera"].global_position.y >= 2.6)
@@ -292,15 +333,43 @@ func _run_scene_tests() -> void:
 	_check("照片进入 UI 仓库", demo.photo_store.photos.size() >= 2)
 	var combo: Dictionary = demo.drop_photo_to_screen(a_photo)
 	_check("第一张照片可上滚动屏", bool(combo.get("accepted", false)), str(combo))
-	# 直接构造短间隔：运行时用同一个 elapsed，drop 方法内部会记录时间。
-	combo = demo.drop_photo_to_screen(b_photo)
-	_check("同轮两张线索照片能组合", bool(combo.get("combined", false)), str(combo))
+	var second_drop: Dictionary = demo.drop_photo_to_screen(b_photo)
+	_check("第二张照片也能放入滚动屏", bool(second_drop.get("accepted", false)), str(second_drop))
+	combo = demo.send_scroll_screen()
+	_check("点击发送后两张线索照片能组合", bool(combo.get("combined", false)), str(combo))
 	_check("组合后门解锁", demo.door_unlocked)
+
+	demo.set_seated(false)
+	demo.player.fire_protection_time = 0.0
+	demo.player.global_position = Vector3(-6.0, 0.0, -18.0)
+	demo._update_player_fire()
+	_check("没有防火时会被火焰推回安全区",
+		demo.player.global_position.is_equal_approx(Vector3(-6.2, 0.0, -11.8)),
+		str(demo.player.global_position))
+	demo.player.apply_wet(5.0)
+	demo.player.global_position = Vector3(-6.0, 0.0, -18.0)
+	demo._update_player_fire()
+	_check("打湿后可以进入火场", demo.player.global_position.is_equal_approx(Vector3(-6.0, 0.0, -18.0)))
+
+	demo._hint_photo_taken.clear()
+	demo.npcs[0].global_position = Vector3(-6.4, 0.0, -2.2)
+	demo._update_hintable_photos()
+	_check("NPC 靠近水桶会拍照", _has_photo_kind(demo.photo_store.photos, "water"))
+	demo.npcs[0].global_position = Vector3(8.2, 0.0, -20.2)
+	demo._update_hintable_photos()
+	_check("NPC 靠近被子会拍照", _has_photo_kind(demo.photo_store.photos, "blanket"))
 
 	demo.queue_free()
 
 
 # --- 断言工具 -----------------------------------------------------------------
+
+func _has_photo_kind(photos: Array, kind: String) -> bool:
+	for photo in photos:
+		if String(photo.get("kind", "")) == kind:
+			return true
+	return false
+
 
 func _script_path(node: Node) -> String:
 	var script: Script = node.get_script()

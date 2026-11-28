@@ -2,12 +2,15 @@ extends Control
 ## 3D 滚动屏里渲染的 UI：显示最近放到屏上的照片 / 组合结果。
 ## 不做输入；拖放由 room_demo 投影到屏幕的 2D 接收区处理。
 
+signal send_requested
+
 const COLOR_TEXT := Color(0.82, 0.92, 0.92)
 const COLOR_MUTED := Color(0.55, 0.68, 0.7)
 const COLOR_ACCENT := Color(0.35, 0.9, 0.82)
 
 var _list: VBoxContainer
 var _result: Label
+var _send: Button
 
 
 func setup() -> void:
@@ -33,7 +36,15 @@ func setup() -> void:
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 3)
 	root.add_child(_list)
-	var hint := _label("把底部照片拖到这块屏上\n短间隔的门禁码两半会自动组合", 14, COLOR_MUTED)
+	_send = Button.new()
+	_send.text = "发送"
+	_send.focus_mode = Control.FOCUS_NONE
+	_send.custom_minimum_size = Vector2(0, 32)
+	# 实际点击用的是 HUD 面板上的大发送键；这里只保留文本区域，避免重复按钮。
+	_send.visible = false
+	_send.pressed.connect(func(): send_requested.emit())
+	root.add_child(_send)
+	var hint := _label("把底部照片拖到这块屏，可放任意张\n点击发送后统一判定组合", 14, COLOR_MUTED)
 	root.add_child(hint)
 
 
@@ -59,6 +70,8 @@ func refresh(photos: Array, screen_photo_ids: Array, result_text: String) -> voi
 		shown += 1
 	if shown == 0:
 		_list.add_child(_label("（还没有照片）", 14, COLOR_MUTED))
+	if _send != null:
+		_send.disabled = screen_photo_ids.is_empty() or result_text.begins_with("滚动屏冷却中")
 
 
 func _label(text: String, font_size: int, color: Color) -> Label:
