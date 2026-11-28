@@ -2,7 +2,7 @@ extends Node3D
 ## 独立飞鼠 demo：只保留一只飞鼠 + 近景相机，方便和参考 3d(1).html 对照。
 ## 运行 scenes/demo_squirrel.tscn（F6）。
 
-const SQUIRREL_SCRIPT := preload("res://scripts/room_demo/flying_squirrel.gd")
+const SQUIRREL_SCRIPT := preload("res://scripts/demos/reference_squirrel.gd")
 
 var squirrel: Node3D
 var _camera: Camera3D
@@ -17,8 +17,7 @@ func _ready() -> void:
 	squirrel = SQUIRREL_SCRIPT.new()
 	squirrel.name = "DemoSquirrel"
 	add_child(squirrel)
-	squirrel.setup(Vector3(-1.2, 0, -1.2), Vector3(1.2, 2.0, 1.2), 7)
-	squirrel.global_position = Vector3(0, 0.18, 0)
+	squirrel.global_position = Vector3(0, 0.02, 0)
 
 
 func _build_environment() -> void:
@@ -84,6 +83,6 @@ func _process(delta: float) -> void:
 	if _camera != null and squirrel != null:
 		# 跟随飞鼠，方便近距离观察翼膜和尾巴。
 		var focus: Vector3 = squirrel.global_position + Vector3(0, 0.12, 0)
-		var angle := sin(_time * 0.22) * 0.28 + 1.15
+		var angle := sin(_time * 0.22) * 0.24 + 0.82
 		_camera.position = focus + Vector3(sin(angle) * 0.72, 0.30, cos(angle) * 0.72)
 		_camera.look_at(focus)
