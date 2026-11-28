@@ -47,13 +47,14 @@ const MONITOR_SIZE := Vector2(3.52, 2.2)
 const CAMERA_LENS_OFFSET := 0.35
 # 激光发射器相对相机的局部位置：右侧/下方，略微在镜头前，投影到画面外。
 const LASER_EMITTER_OFFSET := Vector3(0.32, -0.22, -0.16)
+const LASER_BEAM_LIFETIME := 0.45
 
 ## 对应第一幕原型地图：
 ## C1 舞台全景、C2 舞台/后台门口、C3 后台主视角、C4 侧门。
 ## 机位仍贴墙装在接近天花板的位置，俯视房间。
 const CAMERA_DEFS: Array[Dictionary] = [
-	{"id": "C1", "view": "舞台全景", "pos": Vector3(-2.7, 2.82, -14.8), "look": Vector3(-6.2, 0.80, -18.6), "room": "A"},
-	{"id": "C2", "view": "门口", "pos": Vector3(-1.9, 2.82, -18.0), "look": Vector3(1.8, 0.80, -18.0), "room": "A"},
+	{"id": "C1", "view": "舞台全景", "pos": Vector3(-3.4, 3.25, -14.6), "look": Vector3(-8.5, 0.80, -21.0), "room": "A"},
+	{"id": "C2", "view": "舞台横移", "pos": Vector3(-2.5, 3.15, -18.2), "look": Vector3(-11.5, 0.80, -18.2), "room": "A"},
 	{"id": "C3", "view": "后台主视角", "pos": Vector3(0.7, 2.82, -14.8), "look": Vector3(4.8, 0.80, -18.6), "room": "B"},
 	{"id": "C4", "view": "侧门", "pos": Vector3(5.75, 2.82, -13.15), "look": Vector3(5.75, 0.80, -10.0), "room": "B"},
 ]
@@ -365,7 +366,7 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	impact.material_override = impact_material
 	add_child(impact)
 
-	get_tree().create_timer(2.5).timeout.connect(func():
+	get_tree().create_timer(LASER_BEAM_LIFETIME).timeout.connect(func():
 		beam.queue_free()
 		impact.queue_free())
 
@@ -799,17 +800,18 @@ func _build_observation_rooms() -> void:
 	var ceiling := Color(0.14, 0.16, 0.2)
 
 	# 舞台：x[-10,-2], z[-22,-14]
-	_add_box(_world, "RoomAFloor", Vector3(8, 0.12, 8), Vector3(-6, -0.06, -18), floor)
-	_add_box(_world, "RoomACeiling", Vector3(8, 0.12, 8), Vector3(-6, 3.06, -18), ceiling)
-	_add_box(_world, "RoomABack", Vector3(8, 3, 0.16), Vector3(-6, 1.5, -22), wall)
+	# 舞台扩大到 13×14m、净高 4.6m，给 C1/C2 更大的空间体积。
+	_add_box(_world, "RoomAFloor", Vector3(13, 0.12, 14), Vector3(-8.5, -0.06, -20), floor)
+	_add_box(_world, "RoomACeiling", Vector3(13, 0.12, 14), Vector3(-8.5, 4.6, -20), ceiling)
+	_add_box(_world, "RoomABack", Vector3(13, 4.6, 0.16), Vector3(-8.5, 2.3, -27), wall)
 	# 舞台前墙也留出控制室检修通道的开口。
-	_add_box(_world, "RoomAFrontL", Vector3(3, 3, 0.16), Vector3(-8.5, 1.5, -14), wall)
-	_add_box(_world, "RoomAFrontR", Vector3(3.5, 3, 0.16), Vector3(-3.75, 1.5, -14), wall)
-	_add_box(_world, "RoomAFrontLintel", Vector3(1.5, 0.7, 0.16), Vector3(-6.25, 2.65, -14), wall)
-	_add_box(_world, "RoomASide", Vector3(0.16, 3, 8), Vector3(-10, 1.5, -18), wall)
+	_add_box(_world, "RoomAFrontL", Vector3(8, 4.6, 0.16), Vector3(-11, 2.3, -13), wall)
+	_add_box(_world, "RoomAFrontR", Vector3(3.5, 4.6, 0.16), Vector3(-3.75, 2.3, -13), wall)
+	_add_box(_world, "RoomAFrontLintel", Vector3(1.5, 1.6, 0.16), Vector3(-6.25, 3.8, -13), wall)
+	_add_box(_world, "RoomASide", Vector3(0.16, 4.6, 14), Vector3(-15, 2.3, -20), wall)
 	# 舞台右墙开门洞 z[-19,-17]，接后台
-	_add_box(_world, "StageRightBack", Vector3(0.16, 3, 3), Vector3(-2, 1.5, -20.5), wall)
-	_add_box(_world, "StageRightFront", Vector3(0.16, 3, 3), Vector3(-2, 1.5, -15.5), wall)
+	_add_box(_world, "StageRightBack", Vector3(0.16, 4.6, 8), Vector3(-2, 2.3, -23), wall)
+	_add_box(_world, "StageRightFront", Vector3(0.16, 4.6, 4), Vector3(-2, 2.3, -15), wall)
 
 	# 后台：x[-0.5,9.5], z[-22,-14]
 	_add_box(_world, "RoomBFloor", Vector3(10, 0.12, 8), Vector3(4.5, -0.06, -18), floor)
@@ -851,30 +853,30 @@ func _build_observation_rooms() -> void:
 	_add_label3d(_world, "道具堆 · 盲区", Vector3(7.4, 2.55, -20.6), 22, Color(0.7, 0.78, 0.9))
 
 	# 控制室 → 舞台的检修通道。
-	_add_box(_world, "AccessCorridorFloor", Vector3(1.5, 0.12, 8),
-		Vector3(-6.25, -0.06, -10), floor)
-	_add_box(_world, "AccessCorridorCeiling", Vector3(1.5, 0.12, 8),
-		Vector3(-6.25, 3.06, -10), ceiling)
-	_add_box(_world, "AccessCorridorSideL", Vector3(0.16, 3, 8),
-		Vector3(-7.0, 1.5, -10), wall)
-	_add_box(_world, "AccessCorridorSideR", Vector3(0.16, 3, 8),
-		Vector3(-5.5, 1.5, -10), wall)
+	_add_box(_world, "AccessCorridorFloor", Vector3(1.5, 0.12, 7),
+		Vector3(-6.25, -0.06, -9.5), floor)
+	_add_box(_world, "AccessCorridorCeiling", Vector3(1.5, 0.12, 7),
+		Vector3(-6.25, 3.06, -9.5), ceiling)
+	_add_box(_world, "AccessCorridorSideL", Vector3(0.16, 3, 7),
+		Vector3(-7.0, 1.5, -9.5), wall)
+	_add_box(_world, "AccessCorridorSideR", Vector3(0.16, 3, 7),
+		Vector3(-5.5, 1.5, -9.5), wall)
 	_add_label3d(_world, "检修通道 → 舞台", Vector3(-6.25, 2.6, -6.25), 20,
 		Color(0.55, 0.9, 1.0))
 
 	# 舞台：地台、幕布、大熊/起火点提示。
-	_add_box(_world, "StagePlatform", Vector3(6.5, 0.18, 5.0), Vector3(-6, 0.09, -18.5),
+	_add_box(_world, "StagePlatform", Vector3(10.0, 0.18, 7.0), Vector3(-8.5, 0.09, -20.0),
 		Color(0.22, 0.13, 0.13), false)
-	_add_box(_world, "StageCurtain", Vector3(7.6, 2.7, 0.12), Vector3(-6, 1.4, -21.82),
+	_add_box(_world, "StageCurtain", Vector3(13.4, 3.8, 0.12), Vector3(-8.5, 1.9, -26.82),
 		Color(0.32, 0.08, 0.08), false)
-	_add_box(_world, "StageCurtainTop", Vector3(7.8, 0.25, 0.3), Vector3(-6, 2.85, -21.75),
+	_add_box(_world, "StageCurtainTop", Vector3(13.5, 0.25, 0.3), Vector3(-8.5, 3.85, -26.75),
 		Color(0.24, 0.06, 0.06), false)
 	var bear := MeshInstance3D.new()
 	var bear_mesh := CapsuleMesh.new()
 	bear_mesh.radius = 0.55
 	bear_mesh.height = 1.4
 	bear.mesh = bear_mesh
-	bear.position = Vector3(-8.0, 0.7, -20.0)
+	bear.position = Vector3(-8.0, 0.7, -22.5)
 	var bear_mat := StandardMaterial3D.new()
 	bear_mat.albedo_color = Color(0.45, 0.27, 0.16)
 	bear_mat.roughness = 0.9
@@ -896,23 +898,23 @@ func _build_observation_rooms() -> void:
 
 	for room in ["A", "B"]:
 		var is_stage: bool = room == "A"
-		var center_x := -6.0 if is_stage else 4.5
+		var center_x := -8.5 if is_stage else 4.5
 		var side := -1.0 if is_stage else 1.0
-		_add_box(_world, "Rug" + room, Vector3(6.0 if is_stage else 7.0, 0.02, 4.8),
-			Vector3(center_x, 0.01, -18), Color(0.18, 0.17, 0.22), false)
-		_add_box(_world, "Shelf" + room, Vector3(0.6, 2.2, 3.0),
-			Vector3(center_x + side * (3.4 if is_stage else 4.4), 1.1, -16.5),
+		_add_box(_world, "Rug" + room, Vector3(9.0 if is_stage else 7.0, 0.02, 8.0),
+			Vector3(center_x, 0.01, -20.0), Color(0.18, 0.17, 0.22), false)
+		_add_box(_world, "Shelf" + room, Vector3(0.6, 2.2, 4.0),
+			Vector3(center_x + side * (5.6 if is_stage else 4.4), 1.1, -18.0),
 			Color(0.3, 0.25, 0.2))
-		_add_box(_world, "Sofa" + room, Vector3(2.4, 0.8, 0.9),
-			Vector3(center_x + side * 1.8, 0.4, -15.0), Color(0.22, 0.27, 0.34))
-		_add_box(_world, "Cabinet" + room, Vector3(1.2, 1.6, 0.6),
-			Vector3(center_x - side * (3.3 if is_stage else 4.0), 0.8, -21.0),
+		_add_box(_world, "Sofa" + room, Vector3(2.8, 0.8, 1.0),
+			Vector3(center_x + side * 2.8, 0.4, -15.2), Color(0.22, 0.27, 0.34))
+		_add_box(_world, "Cabinet" + room, Vector3(1.4, 1.8, 0.7),
+			Vector3(center_x - side * (5.2 if is_stage else 4.0), 0.9, -24.0),
 			Color(0.2, 0.23, 0.29))
 		_add_box(_world, "Planter" + room, Vector3(0.5, 0.7, 0.5),
-			Vector3(center_x - side * (3.8 if is_stage else 4.6), 0.35, -14.8),
+			Vector3(center_x - side * (5.6 if is_stage else 4.6), 0.35, -14.0),
 			Color(0.16, 0.28, 0.22))
-		_add_box(_world, "RoomPanel" + room, Vector3(0.04, 1.4, 5.0),
-			Vector3(center_x + side * ((3.92 if is_stage else 4.92)), 1.4, -18.0),
+		_add_box(_world, "RoomPanel" + room, Vector3(0.04, 1.8, 7.0),
+			Vector3(center_x + side * ((6.42 if is_stage else 4.92)), 1.8, -20.0),
 			Color(0.3, 0.33, 0.4), false)
 
 
@@ -1026,8 +1028,8 @@ func _build_squirrels() -> void:
 		if clue_node is Node3D:
 			carryables.append(clue_node)
 	var defs := [
-		{"name": "SquirrelStage", "min": Vector3(-9.2, 0, -21.2),
-			"max": Vector3(-2.4, 2.7, -14.4), "seed": 11},
+		{"name": "SquirrelStage", "min": Vector3(-14.2, 0, -26.2),
+			"max": Vector3(-2.8, 3.9, -13.8), "seed": 11},
 		{"name": "SquirrelBackstage", "min": Vector3(-0.2, 0, -21.2),
 			"max": Vector3(9.2, 2.7, -14.4), "seed": 23},
 	]
@@ -1289,9 +1291,9 @@ func _build_player() -> void:
 func _build_npcs() -> void:
 	# 每个 NPC 只在自己房间的“安全内圈”里巡逻，避免穿过门洞后贴着墙走或面壁。
 	var stage_waypoints := [
-		Vector3(-8.2, 0, -20.0), Vector3(-3.2, 0, -19.6),
-		Vector3(-8.0, 0, -15.4), Vector3(-3.2, 0, -15.2),
-		Vector3(-5.8, 0, -18.0),
+		Vector3(-12.8, 0, -24.8), Vector3(-3.2, 0, -24.5),
+		Vector3(-12.6, 0, -14.8), Vector3(-3.2, 0, -14.8),
+		Vector3(-8.0, 0, -19.5),
 	]
 	var backstage_waypoints := [
 		Vector3(1.2, 0, -20.0), Vector3(8.2, 0, -20.0),
@@ -1302,7 +1304,7 @@ func _build_npcs() -> void:
 	reckless.name = "NpcReckless"
 	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), stage_waypoints)
 	_world.add_child(reckless)
-	reckless.set_navigation_bounds(Vector3(-10, 0, -22), Vector3(-2, 0, -14))
+	reckless.set_navigation_bounds(Vector3(-15, 0, -27), Vector3(-2, 0, -13))
 	reckless.clue_collected.connect(_on_clue_collected)
 	var chicken := AVATAR_LOADER.load_avatar(CHICKEN_GLB, 1.72, 180.0)
 	if chicken != null:

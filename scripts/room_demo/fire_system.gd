@@ -9,16 +9,15 @@ extends Node3D
 signal camera_threat_changed(camera_id: String, threatened: bool)
 
 const FLAME_SHADER := preload("res://shaders/fire_flames.gdshader")
-const GRID := Vector3i(20, 24, 20)
-const BOX_MIN := Vector3(-10.0, 0.0, -22.0)
-# 体积顶面略低于摄像头（y≈2.82），这样高位机位在体积外也能看到火焰的正面/顶面；
-# 火焰威胁判定仍允许烧到略高于体积的机位。
-const BOX_MAX := Vector3(-2.0, 2.45, -14.0)
-const SOURCE := Vector3(-6.0, 0.18, -18.0)
-const SIM_HZ := 10.0
-const FIRE_START_RADIUS := 0.8
-const FIRE_MAX_RADIUS := 5.6
-const FIRE_GROWTH_PER_SEC := 0.18
+const GRID := Vector3i(24, 28, 24)
+const BOX_MIN := Vector3(-15.0, 0.0, -27.0)
+# 火场扩大后，机位抬高到 4m 左右；体积顶面仍低于机位，保证能看到火焰顶面。
+const BOX_MAX := Vector3(-2.0, 2.6, -13.0)
+const SOURCE := Vector3(-8.5, 0.18, -20.0)
+const SIM_HZ := 8.0
+const FIRE_START_RADIUS := 1.0
+const FIRE_MAX_RADIUS := 8.0
+const FIRE_GROWTH_PER_SEC := 0.10
 const CAMERA_BURN_TIME := 20.0
 
 const CAMERA_BURN_RADIUS := 0.45
@@ -39,6 +38,8 @@ var _texture: ImageTexture3D = null
 var _blackbody_lut: ImageTexture = null
 var _volume: MeshInstance3D = null
 var _flames: Array[MeshInstance3D] = []
+var _light: OmniLight3D = null
+var _embers: GPUParticles3D = null
 var _audio: AudioStreamPlayer3D = null
 var _audio_stream: AudioStreamWAV = null
 var _rng := RandomNumberGenerator.new()
@@ -217,11 +218,15 @@ func _step(dt: float) -> void:
 # --- 黑体 LUT / 体积纹理 --------------------------------------------------------
 
 func _build_blackbody_lut() -> void:
-	var image := Image.create(256, 1, false, Image.FORMAT_RGBA8)
+	var image := Image.create(256, 2, false, Image.FORMAT_RGBA8)
 	for i in 256:
 		var temperature := lerpf(700.0, 3000.0, float(i) / 255.0)
 		var color := _blackbody_color(temperature)
 		image.set_pixel(i, 0, Color(color.r, color.g, color.b, 1.0))
+		# 烟尘近似：温度低时比黑体略灰、略蓝，亮度略低。
+		var soot := Color(color.r * 0.82 + 0.04, color.g * 0.88 + 0.03,
+			color.b * 0.96 + 0.04, 1.0)
+		image.set_pixel(i, 1, soot)
 	_blackbody_lut = ImageTexture.create_from_image(image)
 
 
@@ -287,6 +292,9 @@ func _build_volume() -> void:
 	material.set_shader_parameter("blackbody_lut", _blackbody_lut)
 	material.set_shader_parameter("box_min", BOX_MIN)
 	material.set_shader_parameter("box_max", BOX_MAX)
+	material.set_shader_parameter("source_pos", SOURCE)
+	material.set_shader_parameter("fire_radius", FIRE_START_RADIUS)
+	material.set_shader_parameter("fire_height", 2.0)
 	material.set_shader_parameter("intensity", intensity)
 	_volume = MeshInstance3D.new()
 	_volume.name = "FireVolume"
@@ -296,30 +304,75 @@ func _build_volume() -> void:
 	_volume.position = (BOX_MIN + BOX_MAX) * 0.5
 	_volume.material_override = material
 	_volume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# 3D raymarch 保留为底层实验/诊断层；可见火舌用更稳定的交叉面片。
+	# 体积层保留为火光/热雾；可见火舌用交叉面片，避免高位机位只看到一个发光团。
 	_volume.visible = false
 	add_child(_volume)
 	_build_flames()
 
 
 func _build_flames() -> void:
-	for index in 3:
+	# 多层 billboard：主火舌 + 两侧偏移的小火舌，避免看到一根均匀的光柱。
+	for index in 4:
 		var flame := MeshInstance3D.new()
 		flame.name = "Flame_%d" % index
 		var quad := QuadMesh.new()
 		quad.size = Vector2(1.5, 2.5)
 		flame.mesh = quad
-		flame.rotation_degrees.y = index * 60.0
-		flame.position = SOURCE + Vector3(0, 1.25, 0)
+		var offsets := [Vector3(0, 0, 0), Vector3(-0.42, 0, 0.18),
+			Vector3(0.42, 0, -0.18), Vector3(0.08, 0, 0.36)]
+		flame.position = SOURCE + offsets[index] + Vector3(0, 1.25, 0)
 		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		flame.visible = true
 		var material := ShaderMaterial.new()
 		material.shader = FLAME_SHADER
 		material.set_shader_parameter("blackbody_lut", _blackbody_lut)
 		material.set_shader_parameter("intensity", 0.0)
-		material.set_shader_parameter("seed", float(index) * 1.7)
+		material.set_shader_parameter("seed", float(index) * 3.1)
 		flame.material_override = material
 		add_child(flame)
 		_flames.append(flame)
+	# 火光：让舞台/幕布/地面被火焰照亮，而不是只看到一张贴片。
+	_light = OmniLight3D.new()
+	_light.name = "FireLight"
+	_light.position = SOURCE + Vector3(0, 1.15, 0)
+	_light.light_color = Color(1.0, 0.35, 0.08)
+	_light.light_energy = 2.0
+	_light.omni_range = 7.0
+	add_child(_light)
+	_build_embers()
+
+
+func _build_embers() -> void:
+	_embers = GPUParticles3D.new()
+	_embers.name = "FireEmbers"
+	_embers.amount = 44
+	_embers.lifetime = 1.4
+	_embers.preprocess = 1.2
+	_embers.position = SOURCE + Vector3(0, 0.5, 0)
+	var process := ParticleProcessMaterial.new()
+	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	process.emission_box_extents = Vector3(0.45, 0.12, 0.45)
+	process.direction = Vector3(0, 1, 0)
+	process.spread = 18.0
+	process.initial_velocity_min = 0.2
+	process.initial_velocity_max = 0.9
+	process.gravity = Vector3(0, 1.5, 0)
+	process.scale_min = 0.5
+	process.scale_max = 1.4
+	process.color = Color(1.0, 0.35, 0.05)
+	_embers.process_material = process
+	var ember_mesh := SphereMesh.new()
+	ember_mesh.radius = 0.022
+	ember_mesh.height = 0.044
+	var ember_material := StandardMaterial3D.new()
+	ember_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ember_material.albedo_color = Color(1.0, 0.35, 0.05)
+	ember_material.emission_enabled = true
+	ember_material.emission = Color(1.0, 0.25, 0.02)
+	ember_material.emission_energy_multiplier = 4.0
+	ember_mesh.material = ember_material
+	_embers.draw_pass_1 = ember_mesh
+	add_child(_embers)
 
 
 func _update_volume_uniforms() -> void:
@@ -327,16 +380,33 @@ func _update_volume_uniforms() -> void:
 		return
 	var material := _volume.material_override as ShaderMaterial
 	material.set_shader_parameter("intensity", intensity)
-	var flame_width := 0.75 + radius * 0.32
-	var flame_height := 1.7 + radius * 0.45
+	material.set_shader_parameter("source_pos", SOURCE)
+	material.set_shader_parameter("fire_radius", maxf(radius, 0.35))
+	material.set_shader_parameter("fire_height", minf(2.5, 1.8 + radius * 0.22))
+	var flame_width := 1.2 + radius * 0.70
+	var flame_height := 2.0 + radius * 0.70
 	for index in _flames.size():
 		var flame := _flames[index]
 		if flame == null:
 			continue
-		flame.scale = Vector3(flame_width, flame_height / 2.5, 1.0)
-		flame.position = SOURCE + Vector3(0, flame_height * 0.5, 0)
+		var width_scale := 1.0 if index == 0 else (0.42 if index < 3 else 0.30)
+		var height_scale := 1.0 if index == 0 else (0.66 if index < 3 else 0.48)
+		flame.scale = Vector3(flame_width * width_scale,
+			flame_height * height_scale / 2.5, 1.0)
+		var offset := Vector3(0, 0, 0)
+		if index > 0:
+			offset = [Vector3(-0.42, 0, 0.18), Vector3(0.42, 0, -0.18),
+				Vector3(0.08, 0, 0.36)][index - 1]
+		flame.position = SOURCE + offset + Vector3(0, flame_height * height_scale * 0.5, 0)
 		var flame_material := flame.material_override as ShaderMaterial
-		flame_material.set_shader_parameter("intensity", intensity * (0.82 + 0.18 * sin(age * 2.0 + index)))
+		var layer_intensity := 0.55 if index == 0 else 0.75
+		flame_material.set_shader_parameter("intensity",
+			intensity * layer_intensity * (0.82 + 0.18 * sin(age * 2.0 + index)))
+	if _light != null:
+		_light.light_energy = 1.5 + intensity * 3.0 + 0.5 * sin(age * 8.0)
+		_light.omni_range = 5.0 + radius * 1.4
+	if _embers != null:
+		_embers.amount_ratio = clampf(0.25 + intensity * 0.75, 0.0, 1.0)
 
 
 func _build_audio() -> void:

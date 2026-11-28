@@ -258,6 +258,17 @@ func _run_scene_tests() -> void:
 	_check("监控画面启用鱼眼畸变", demo.monitor_ui.uses_fisheye())
 	_check("监控画面有老电视扫描线暗纹", demo.monitor_ui.uses_scanlines())
 	_check("新地图有舞台地台", demo.find_child("StagePlatform", true, false) != null)
+	var stage_floor := demo.find_child("RoomAFloor", true, false) as MeshInstance3D
+	var stage_floor_mesh := stage_floor.mesh as BoxMesh if stage_floor != null else null
+	_check("C1/C2 舞台体积更大",
+		stage_floor_mesh != null and stage_floor_mesh.size.x >= 12.0 and stage_floor_mesh.size.z >= 13.0,
+		str(stage_floor_mesh.size) if stage_floor_mesh != null else "missing")
+	_check("激光显示时间已缩短", demo.LASER_BEAM_LIFETIME <= 1.0)
+	_check("响应结果在正上方",
+		is_equal_approx(demo.ui._notification.get_anchor(0), 0.5)
+		and is_equal_approx(demo.ui._notification.get_anchor(1), 0.0),
+		"anchors=%s,%s" % [demo.ui._notification.get_anchor(0), demo.ui._notification.get_anchor(1)])
+	_check("火焰扩张速度较慢", demo.fire_system.FIRE_GROWTH_PER_SEC <= 0.12)
 	_check("新地图有后台道具堆", demo.find_child("PropCrate1", true, false) != null)
 	_check("新地图有侧门", demo.find_child("SideDoor", true, false) != null)
 	_check("C4 位于侧门房间", demo.feeds[3]["camera"].global_position.z > -14.0,

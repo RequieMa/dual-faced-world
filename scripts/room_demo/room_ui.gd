@@ -145,10 +145,11 @@ func _build_hud() -> void:
 	_hud.add_child(_back_button)
 
 	_notification = _label("", 15, COLOR_ACCENT)
-	_notification.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_notification.position = Vector2(-520, 18)
-	_notification.custom_minimum_size = Vector2(500, 0)
-	_notification.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# 响应结果放正上方，避免被右上角滚动屏遮住。
+	_notification.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_notification.position = Vector2(-300, 18)
+	_notification.custom_minimum_size = Vector2(600, 0)
+	_notification.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud.add_child(_notification)
 
 	_prompt = _label("", 16, COLOR_TEXT)
