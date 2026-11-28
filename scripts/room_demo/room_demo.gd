@@ -244,8 +244,9 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	var camera: Camera3D = feed["camera"]
 	var viewport: SubViewport = feed["viewport"]
 	var screen_point := normalized * Vector2(viewport.size)
-	var origin := camera.project_ray_origin(screen_point)
-	var direction := camera.project_ray_normal(screen_point)
+	# screen point -> world：从当前机位相机位置出发，沿该屏幕点的投影方向。
+	var origin: Vector3 = camera.global_position
+	var direction: Vector3 = camera.project_ray_normal(screen_point).normalized()
 	var point := origin + direction * 14.0
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * 40.0)
 	query.collision_mask = 0xFFFFFFFF
@@ -255,9 +256,10 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	_spawn_beam(origin, point)
 	var accepted: Array[String] = []
 	for npc in npcs:
-		if is_instance_valid(npc) and npc.receive_signal(point):
+		if is_instance_valid(npc) and npc.receive_laser(origin, point):
 			accepted.append(npc.npc_id)
-	last_laser = {"point": point, "accepted": accepted, "feed": feed_id}
+	last_laser = {"origin": origin, "direction": direction, "point": point,
+		"accepted": accepted, "feed": feed_id}
 	var message := "激光没有引起注意（超出范围或莽撞 NPC 暂时不信了）"
 	if not accepted.is_empty():
 		message = "激光信号：%s 响应" % "、".join(accepted)
@@ -280,9 +282,9 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	material.emission = Color(1.0, 0.15, 0.1)
 	material.emission_energy_multiplier = 4.0
 	beam.material_override = material
+	add_child(beam)
 	beam.position = (from + to) * 0.5
 	beam.look_at(to, Vector3.UP)
-	add_child(beam)
 	get_tree().create_timer(1.6).timeout.connect(beam.queue_free)
 
 

@@ -108,6 +108,17 @@ func _run_npc_tests() -> void:
 	_check("莽撞 NPC 跑空多次后进入忽略状态", reckless.is_ignoring_signals(), str(reckless.get_state()))
 	_check("忽略状态下拒绝信号", not reckless.receive_signal(Vector3(0.5, 0, 0)))
 
+	var laser_npc = load(NPC_SCRIPT).new()
+	root.add_child(laser_npc)
+	laser_npc.configure("npc_laser", "cautious", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
+	_check("射线穿过视锥才响应",
+		laser_npc.receive_laser(Vector3(0, 1.45, 3), Vector3(0, 1.45, -3), 0.0))
+	_check("偏移射线不响应",
+		not laser_npc.receive_laser(Vector3(3, 1.45, 3), Vector3(3, 1.45, -3), 0.0))
+	_check("没到达视锥的短射线不响应",
+		not laser_npc.receive_laser(Vector3(0, 1.45, 3), Vector3(0, 1.45, 1), 0.0))
+	laser_npc.queue_free()
+
 	var cautious = load(NPC_SCRIPT).new()
 	root.add_child(cautious)
 	cautious.configure("npc_cautious", "cautious", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
@@ -180,6 +191,15 @@ func _run_scene_tests() -> void:
 
 	_check("可以选中 C1", demo.select_feed("C1"))
 	_check("C1 成为当前机位", String(demo.camera_session.get_state().get("current", "")) == "C1")
+	var laser_result: Dictionary = demo.fire_laser("C1", Vector2(0.5, 0.5))
+	var c1_feed: Dictionary = demo._feed_by_id("C1")
+	var c1_camera: Camera3D = c1_feed["camera"]
+	var c1_viewport: SubViewport = c1_feed["viewport"]
+	_check("激光从当前机位相机出发",
+		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
+	var expected_dir: Vector3 = c1_camera.project_ray_normal(Vector2(0.5, 0.5) * Vector2(c1_viewport.size)).normalized()
+	_check("激光方向来自屏幕点投影",
+		(laser_result.get("direction", Vector3.ZERO) as Vector3).dot(expected_dir) > 0.999)
 	demo.tick(999.0)
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))
 	_check("烧毁画面显示雪花", demo.monitor_ui.is_burned_visual("C1"))
