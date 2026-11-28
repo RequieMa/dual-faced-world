@@ -262,7 +262,8 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		point = hit.position
-	# 世界光束从可见相机模型出发，而不是悬在镜头前方 CAMERA_LENS_OFFSET 米。
+	# 世界光束从投影相机出发；本机位画面里它会缩成一个命中点，
+	# 监控 HUD 另画一条屏幕中心→点击点的 2D 线作为可读性标注。
 	var origin: Vector3 = laser_start_position(camera)
 	var direction: Vector3 = (point - origin).normalized()
 	_spawn_beam(origin, point)
@@ -280,11 +281,11 @@ func fire_laser(feed_id: String, normalized: Vector2) -> Dictionary:
 	return last_laser
 
 
-## 激光世界线/光束的起点：可见相机模型的位置。
-## 想改射线起点，只改这个函数（返回 camera.global_position 就是投影相机位置）。
+## 激光世界线/光束的起点：当前机位 Camera3D 的投影位置。
+## 注意：相机模型为了不自遮挡被前移了 CAMERA_LENS_OFFSET，但物理射线必须从投影相机出发；
+## 从模型后方出发会让本机位画面出现一条从画面外斜进来的错误线。
 func laser_start_position(camera: Camera3D) -> Vector3:
-	var forward := -camera.global_transform.basis.z.normalized()
-	return camera.global_position - forward * CAMERA_LENS_OFFSET
+	return camera.global_position
 
 
 func _spawn_beam(from: Vector3, to: Vector3) -> void:
