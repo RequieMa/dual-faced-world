@@ -16,6 +16,7 @@ const PLAYER_SCRIPT := preload("res://scripts/room_demo/room_player.gd")
 const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
+const SQUIRREL_SCRIPT := preload("res://scripts/room_demo/flying_squirrel.gd")
 const LENS_SHADER := preload("res://shaders/lens_distortion.gdshader")
 const LENS_STRENGTH := 0.045
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
@@ -64,6 +65,7 @@ const CLUE_DEFS: Array[Dictionary] = [
 
 var player: CharacterBody3D = null
 var npcs: Array[Node] = []
+var squirrels: Array[Node] = []
 var feeds: Array[Dictionary] = []
 var ui: CanvasLayer = null
 var camera_session: Node = null
@@ -96,6 +98,7 @@ func _ready() -> void:
 	_build_control_room()
 	_build_observation_rooms()
 	_build_clues()
+	_build_squirrels()
 	_build_camera_models()
 	_build_player()
 	_build_npcs()
@@ -127,6 +130,9 @@ func tick(delta: float) -> void:
 	for npc in npcs:
 		if is_instance_valid(npc):
 			npc.tick(npc_delta, _clues)
+	for squirrel in squirrels:
+		if is_instance_valid(squirrel):
+			squirrel.tick(npc_delta)
 	if monitor_ui != null and camera_session != null:
 		monitor_ui.refresh_feed_states(camera_session)
 		_update_dwell_ui()
@@ -894,6 +900,42 @@ func _build_clues() -> void:
 		}
 		_clues.append(clue)
 		_clue_by_id[clue_id] = clue
+
+
+func _build_squirrels() -> void:
+	var carryables: Array[Node3D] = []
+	for clue in _clues:
+		var clue_node = clue.get("node")
+		if clue_node is Node3D:
+			carryables.append(clue_node)
+	var defs := [
+		{"name": "SquirrelStage", "min": Vector3(-9.2, 0, -21.2),
+			"max": Vector3(-2.4, 2.7, -14.4), "seed": 11},
+		{"name": "SquirrelBackstage", "min": Vector3(-0.2, 0, -21.2),
+			"max": Vector3(9.2, 2.7, -14.4), "seed": 23},
+	]
+	for def in defs:
+		var squirrel := SQUIRREL_SCRIPT.new()
+		squirrel.name = String(def["name"])
+		_world.add_child(squirrel)
+		squirrel.setup(def["min"], def["max"], int(def["seed"]), carryables)
+		squirrel.item_dropped.connect(_on_squirrel_item_dropped)
+		squirrels.append(squirrel)
+
+
+func _on_squirrel_item_dropped(item: Node3D, drop_position: Vector3) -> void:
+	for clue in _clues:
+		if clue.get("node") == item:
+			clue["position"] = drop_position
+			_clue_by_id[String(clue["id"])] = clue
+			return
+
+
+## 给未来场景的火焰区域预留接口：每个火焰点会让附近的飞鼠加速逃离。
+func set_fire_sources(points: Array[Vector3]) -> void:
+	for squirrel in squirrels:
+		if is_instance_valid(squirrel):
+			squirrel.set_fire_sources(points)
 
 
 func _build_camera_models() -> void:
