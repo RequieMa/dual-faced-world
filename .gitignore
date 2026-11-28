@@ -10,6 +10,8 @@ Thumbs.db
 # 外部资产：忽略内容，只保留 .gdignore
 external-assets/*
 !external-assets/.gdignore
+# 本地 external-assets 备份包，不入库
+/external-assets.zip
 
 # Game Studio 本机工具状态（绝对路径/日志/截图，不入库）
 .dsh/

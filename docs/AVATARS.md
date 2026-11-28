@@ -83,6 +83,25 @@ zstd -d -f "external-assets\_work\lumine\Tactical Lumine.blend" `
 它不会 1:1 复刻 Endfield 的 SDF 面部阴影/多 ramp 高光，但保留了“贴图色块 + 硬阴影 +
 描边 + 边缘光”的二次元读感，且在 Forward+ 下开销很小。
 
+## 资产缺失时（重要）
+
+三个角色各自独立判断，不会因为缺一个模型就整场失败：
+
+- `FileAccess.file_exists("res://external-assets/generated/<name>.glb")` 为真 → 用 GLB；
+- 文件缺失/损坏/包围盒异常 → `load_avatar()` 返回 `null`，对应角色保留 primitive 身体；
+- 玩家、莽撞、谨慎的加载互不影响，仍然可以正常测试和完成 demo。
+
+在另一台机器上把 `external-assets.zip` 解压到仓库根目录，确认至少有：
+
+```text
+external-assets/generated/chicken.glb
+external-assets/generated/soyo.glb
+external-assets/generated/lumine.glb
+```
+
+然后重启 Godot 即可。`external-assets/` 不进 git，所以干净 clone 默认就是 primitive 回退；
+这是预期行为。
+
 ## 为什么不在 `.gdignore` 外
 
 仓库约定 `external-assets/` 的内容不进 git；GLB 是本地生成/分发资产，不提交。

@@ -40,6 +40,10 @@ func setup() -> void:
 	_fisheye_material.shader = FISHEYE_SHADER
 	_fisheye_material.set_shader_parameter("strength", FISHEYE_STRENGTH)
 	_fisheye_material.set_shader_parameter("zoom", 1.0)
+	_fisheye_material.set_shader_parameter("scanline_density", 180.0)
+	_fisheye_material.set_shader_parameter("scanline_strength", 0.22)
+	_fisheye_material.set_shader_parameter("noise_strength", 0.035)
+	_fisheye_material.set_shader_parameter("vignette_strength", 0.38)
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.025, 0.04, 0.06, 1.0)
@@ -235,6 +239,12 @@ func _on_big_feed_input(event: InputEvent) -> void:
 
 func uses_fisheye() -> bool:
 	return _fisheye_material != null and _fisheye_material.shader == FISHEYE_SHADER
+
+
+func uses_scanlines() -> bool:
+	if _fisheye_material == null:
+		return false
+	return float(_fisheye_material.get_shader_parameter("scanline_strength")) > 0.0
 
 
 ## 画面被鱼眼 shader 向外弯过；右键激光需要把点击坐标反变换回原始画面 UV。

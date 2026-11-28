@@ -6,6 +6,7 @@ signal seat_changed(seated: bool)
 signal interaction(action: String)
 signal sit_hint_changed(visible: bool)
 
+const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
 const WALK_SPEED := 2.2
 const WALK_ACCEL := 8.0
 const WALK_DECEL := 12.0
@@ -62,10 +63,21 @@ func attach_avatar(avatar: Node3D) -> void:
 		return
 	_avatar = avatar
 	add_child(avatar)
+	# 第一人称相机在头部内部；把玩家自己的模型放到 layer 2，并让相机剔除该层，
+	# 否则会看到头部/身体内壁（穿模）。
+	AVATAR_LOADER.fit_in_parent(avatar, 1.60)
+	_set_first_person_layers(avatar)
 	if _body_mesh != null:
 		_body_mesh.visible = false
 	if _head_mesh != null:
 		_head_mesh.visible = false
+
+
+func _set_first_person_layers(node: Node) -> void:
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).layers = 2
+	for child in node.get_children():
+		_set_first_person_layers(child)
 
 
 func has_avatar() -> bool:
@@ -88,6 +100,7 @@ func _build_body() -> void:
 	_body_mesh.mesh = capsule
 	_body_mesh.position.y = 0.88
 	_body_mesh.material_override = _material(Color(0.72, 0.74, 0.8))
+	_body_mesh.layers = 2
 	add_child(_body_mesh)
 
 	_head_mesh = MeshInstance3D.new()
@@ -97,6 +110,7 @@ func _build_body() -> void:
 	_head_mesh.mesh = sphere
 	_head_mesh.position.y = 1.55
 	_head_mesh.material_override = _material(Color(0.86, 0.72, 0.62))
+	_head_mesh.layers = 2
 	add_child(_head_mesh)
 
 	_head = Node3D.new()
@@ -108,6 +122,8 @@ func _build_body() -> void:
 	camera.name = "FirstPersonCamera"
 	camera.current = true
 	camera.fov = 75.0
+	# layer 2 = 玩家自己的 avatar；第一人称相机不渲染它。
+	camera.cull_mask = camera.cull_mask & ~(1 << 1)
 	camera.position = Vector3(0, 0.08, 0)
 	_head.add_child(camera)
 
