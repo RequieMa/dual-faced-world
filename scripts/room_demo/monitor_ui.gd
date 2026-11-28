@@ -256,7 +256,7 @@ func _feed_by_id(feed_id: String) -> Dictionary:
 ## 烧毁机位显示动态雪花：几张随机噪声轮播，避免停在最后一帧。
 func _build_snow_textures() -> void:
 	for frame in 4:
-		var image := Image.create(320, 180, false, Image.FORMAT_RGB8)
+		var image := Image.create(320, 180, false, Image.FORMAT_RGBA8)
 		for y in 180:
 			for x in 320:
 				var value := randi() % 256

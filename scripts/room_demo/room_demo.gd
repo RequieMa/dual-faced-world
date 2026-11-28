@@ -174,8 +174,15 @@ func _on_interaction(action: String) -> void:
 func select_feed(feed_id: String) -> bool:
 	if camera_session == null:
 		return false
+	var snapshot: Dictionary = camera_session.get_state()
+	if snapshot.get("burned", []).has(feed_id):
+		ui.set_notification("%s 已烧毁，没有画面" % feed_id)
+		return false
+	if (snapshot.get("cooldowns", {}) as Dictionary).has(feed_id):
+		ui.set_notification("%s 冷却中，暂时不能看" % feed_id)
+		return false
 	if not camera_session.enter(feed_id):
-		ui.set_notification("%s 不可用（冷却 / 烧毁 / 未知机位）" % feed_id)
+		ui.set_notification("%s 不可用（未知机位）" % feed_id)
 		return false
 	selected_feed = feed_id
 	monitor_ui.set_selected(feed_id)
