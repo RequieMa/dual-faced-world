@@ -1287,17 +1287,22 @@ func _build_player() -> void:
 
 
 func _build_npcs() -> void:
-	var waypoints := [
-		Vector3(-8.5, 0, -19.5), Vector3(-4.0, 0, -19.5),
-		Vector3(-8.0, 0, -15.5), Vector3(-3.0, 0, -15.5),
-		Vector3(-1.25, 0, -18.0),
-		Vector3(1.0, 0, -19.5), Vector3(7.0, 0, -19.5),
-		Vector3(2.0, 0, -15.5), Vector3(8.5, 0, -15.5),
+	# 每个 NPC 只在自己房间的“安全内圈”里巡逻，避免穿过门洞后贴着墙走或面壁。
+	var stage_waypoints := [
+		Vector3(-8.2, 0, -20.0), Vector3(-3.2, 0, -19.6),
+		Vector3(-8.0, 0, -15.4), Vector3(-3.2, 0, -15.2),
+		Vector3(-5.8, 0, -18.0),
+	]
+	var backstage_waypoints := [
+		Vector3(1.2, 0, -20.0), Vector3(8.2, 0, -20.0),
+		Vector3(1.2, 0, -15.2), Vector3(8.2, 0, -15.2),
+		Vector3(5.0, 0, -18.0),
 	]
 	var reckless = NPC_SCRIPT.new()
 	reckless.name = "NpcReckless"
-	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), waypoints)
+	reckless.configure("reckless", "reckless", Vector3(-7.0, 0, -18.5), stage_waypoints)
 	_world.add_child(reckless)
+	reckless.set_navigation_bounds(Vector3(-10, 0, -22), Vector3(-2, 0, -14))
 	reckless.clue_collected.connect(_on_clue_collected)
 	var chicken := AVATAR_LOADER.load_avatar(CHICKEN_GLB, 1.72, 180.0)
 	if chicken != null:
@@ -1305,8 +1310,9 @@ func _build_npcs() -> void:
 	npcs.append(reckless)
 	var cautious = NPC_SCRIPT.new()
 	cautious.name = "NpcCautious"
-	cautious.configure("cautious", "cautious", Vector3(5.5, 0, -18.5), waypoints)
+	cautious.configure("cautious", "cautious", Vector3(5.5, 0, -18.5), backstage_waypoints)
 	_world.add_child(cautious)
+	cautious.set_navigation_bounds(Vector3(-0.5, 0, -22), Vector3(9.5, 0, -14))
 	cautious.clue_collected.connect(_on_clue_collected)
 	var soyo := AVATAR_LOADER.load_avatar(SOYO_GLB, 1.72, 180.0)
 	if soyo != null:

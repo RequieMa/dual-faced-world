@@ -50,6 +50,8 @@
   并仔细翻找，不会因为跑空而忽略信号。两人都会在无指令时自己巡逻/四处张望。
   移动速度已下调（莽撞约 1.65m/s、谨慎约 0.6m/s、玩家约 2.2m/s）；NPC 改用
   `CharacterBody3D + move_and_slide`，会被墙体和家具挡住，不再穿墙。
+  每个 NPC 只在自己的房间安全内圈巡逻（离墙至少 1.2m），原地不动超过 5 秒会强制换目标；
+  火焰进入 4.2m 警戒圈时切换到避火逃跑，不再长时间面壁。
 - **线索**：2 个，放在房间角落/家具后面；NPC 只有走到很近且看得到时才会顺手捡，
   大多数情况需要玩家用激光或截图把他们引过去。
 - **飞鼠**：舞台/后台各有 1 只（共 2 只），尺寸与钥匙/线索 primitive 的 0.34m 一致。
@@ -99,7 +101,7 @@ Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 120 checks
+godot --headless --path . --script tests/test_room_demo.gd   # 122 checks
 godot --headless --path . --script tests/run_all.gd          # 29 suites
 ```
 

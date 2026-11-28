@@ -182,6 +182,28 @@ func _run_npc_tests() -> void:
 		str(fire_npc.get_state()))
 	fire_npc.queue_free()
 
+	var wall_npc = load(NPC_SCRIPT).new()
+	root.add_child(wall_npc)
+	wall_npc.configure("npc_wall", "reckless", Vector3(0, 0, 0),
+		[Vector3(20, 0, 0), Vector3(0, 0, 20)])
+	wall_npc.set_navigation_bounds(Vector3(-10, 0, -10), Vector3(10, 0, 10))
+	wall_npc.tick(5.0, [])
+	_check("NPC 导航目标会避开墙面",
+		wall_npc.global_position.x <= 8.81 and wall_npc.global_position.z <= 8.81,
+		str(wall_npc.global_position))
+	wall_npc.queue_free()
+
+	var idle_npc = load(NPC_SCRIPT).new()
+	root.add_child(idle_npc)
+	idle_npc.configure("npc_idle", "cautious", Vector3(0, 0, 0), [Vector3(0, 0, 0)])
+	idle_npc.state = "search"
+	idle_npc._search_remaining = 99.0
+	idle_npc.tick(6.0, [])
+	_check("NPC 原地不动超过 5 秒会强制换目标",
+		String(idle_npc.get_state().get("state", "")) != "search",
+		str(idle_npc.get_state()))
+	idle_npc.queue_free()
+
 	reckless.queue_free()
 	cautious.queue_free()
 
