@@ -7,7 +7,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const NPC_SCRIPT := "res://scripts/room_demo/npc_actor.gd"
-const EXPECTED_CHECKS := 40
+const EXPECTED_CHECKS := 37
 
 var _failures: Array[String] = []
 var _checks: int = 0
@@ -78,23 +78,13 @@ func _initialize() -> void:
 	var spot := npc.find_child("VisionSpot", true, false) as SpotLight3D
 	_check("NPC 有 SpotLight 视锥", spot != null)
 	var cone := npc.find_child("VisionCone", true, false) as MeshInstance3D
-	_check("NPC 有短可见锥体", cone != null)
+	_check("可见圆锥已隐藏", cone == null or not cone.visible)
 	_check("视锥启用阴影（只照第一个面）", spot != null and spot.shadow_enabled)
 	_check("视锥距离不大", spot != null and spot.spot_range <= 6.6,
 		"" if spot == null else "range=%.2f" % spot.spot_range)
 	_check("视锥角度不大", spot != null and spot.spot_angle <= 70.0,
 		"" if spot == null else "angle=%.1f" % spot.spot_angle)
 	_check("视锥不参与 GI", spot != null and is_equal_approx(spot.light_indirect_energy, 0.0))
-	var cone_material := cone.material_override as StandardMaterial3D if cone != null else null
-	_check("可见锥体双面渲染",
-		cone_material != null and cone_material.cull_mode == BaseMaterial3D.CULL_DISABLED)
-	_check("可见锥体透明度 80%",
-		cone_material != null and is_equal_approx(cone_material.albedo_color.a, 0.8),
-		"" if cone_material == null else str(cone_material.albedo_color.a))
-	var vision_length := float(npc.get_state().get("vision_length", 0.0))
-	_check("锥体一直画到遮挡距离",
-		cone != null and absf(cone.scale.x - vision_length) < 0.05,
-		"" if cone == null else "cone=%.2f vision=%.2f" % [cone.scale.x, vision_length])
 	_check("NPC 初始在停顿", String(npc.state) == "pause", str(npc.state))
 
 	# 4) NPC 有起步加速和走路起伏。

@@ -202,6 +202,9 @@ func _run_scene_tests() -> void:
 	var c1_viewport: SubViewport = c1_feed["viewport"]
 	_check("激光从当前机位相机出发",
 		(laser_result.get("origin", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
+	var laser_beam := demo.get_node_or_null("LaserBeam") as MeshInstance3D
+	_check("激光世界线从相机起点显示",
+		laser_beam != null and (laser_beam.get_meta("from", Vector3.INF) as Vector3).is_equal_approx(c1_camera.global_position))
 	var expected_dir: Vector3 = c1_camera.project_ray_normal(click_uv * Vector2(c1_viewport.size)).normalized()
 	_check("激光方向来自屏幕点投影",
 		(laser_result.get("direction", Vector3.ZERO) as Vector3).dot(expected_dir) > 0.999)

@@ -535,6 +535,8 @@ func _ensure_visual() -> void:
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_cone_visual.material_override = cone_material
 	_vision_pivot.add_child(_cone_visual)
+	# 可见圆锥太干扰监控画面；只保留 spotlight 照明，圆锥 mesh 隐藏。
+	_cone_visual.visible = false
 
 	_update_vision_visual()
 

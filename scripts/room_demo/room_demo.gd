@@ -279,48 +279,46 @@ func _spawn_beam(from: Vector3, to: Vector3) -> void:
 	var total := from.distance_to(to)
 	if total <= 0.05:
 		return
-	# 射线起点仍是相机；视觉光束从相机前方起画，避免相机处在几何体内部糊满屏。
-	var direction := (to - from) / total
-	var visual_from := from + direction * minf(0.8, total * 0.5)
-	var length := visual_from.distance_to(to)
-	if length <= 0.05:
-		return
-	var beam := Node3D.new()
+	# 无厚度世界线：顶点严格是相机和命中点，避免体积光束在相机内糊屏/起点偏移。
+	var line_mesh := ImmediateMesh.new()
+	var line_material := StandardMaterial3D.new()
+	line_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	line_material.albedo_color = Color(1.0, 0.08, 0.03)
+	line_material.emission_enabled = true
+	line_material.emission = Color(1.0, 0.04, 0.01)
+	line_material.emission_energy_multiplier = 8.0
+	line_mesh.surface_begin(Mesh.PRIMITIVE_LINES, line_material)
+	line_mesh.surface_add_vertex(from)
+	line_mesh.surface_add_vertex(to)
+	line_mesh.surface_end()
+	var beam := MeshInstance3D.new()
 	beam.name = "LaserBeam"
+	beam.mesh = line_mesh
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.set_meta("from", from)
+	beam.set_meta("to", to)
 	add_child(beam)
-	beam.position = (visual_from + to) * 0.5
-	beam.look_at(to, Vector3.UP)
 
-	var core_mesh := BoxMesh.new()
-	core_mesh.size = Vector3(0.012, 0.012, length)
-	var core := MeshInstance3D.new()
-	core.mesh = core_mesh
-	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var core_material := StandardMaterial3D.new()
-	core_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	core_material.albedo_color = Color(1.0, 0.12, 0.05)
-	core_material.emission_enabled = true
-	core_material.emission = Color(1.0, 0.05, 0.02)
-	core_material.emission_energy_multiplier = 8.0
-	core.material_override = core_material
-	beam.add_child(core)
+	var impact_mesh := SphereMesh.new()
+	impact_mesh.radius = 0.07
+	impact_mesh.height = 0.14
+	var impact := MeshInstance3D.new()
+	impact.name = "LaserImpact"
+	impact.mesh = impact_mesh
+	impact.position = to
+	impact.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var impact_material := StandardMaterial3D.new()
+	impact_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	impact_material.albedo_color = Color(1.0, 0.12, 0.04)
+	impact_material.emission_enabled = true
+	impact_material.emission = Color(1.0, 0.05, 0.01)
+	impact_material.emission_energy_multiplier = 5.0
+	impact.material_override = impact_material
+	add_child(impact)
 
-	# 加法辉光层，让细激光在监控画面里也能看见。
-	var glow_mesh := BoxMesh.new()
-	glow_mesh.size = Vector3(0.035, 0.035, length)
-	var glow := MeshInstance3D.new()
-	glow.mesh = glow_mesh
-	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var glow_material := StandardMaterial3D.new()
-	glow_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glow_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	glow_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	glow_material.albedo_color = Color(1.0, 0.05, 0.02, 0.18)
-	glow.material_override = glow_material
-	beam.add_child(glow)
-
-	get_tree().create_timer(2.5).timeout.connect(beam.queue_free)
+	get_tree().create_timer(2.5).timeout.connect(func():
+		beam.queue_free()
+		impact.queue_free())
 
 
 func _spawn_explosion(position: Vector3) -> void:
