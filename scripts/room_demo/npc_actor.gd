@@ -530,7 +530,7 @@ func _ensure_visual() -> void:
 	_cone_visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var cone_material := StandardMaterial3D.new()
 	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.2)
+	cone_material.albedo_color = Color(body_color.r, body_color.g, body_color.b, 0.8)
 	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_cone_visual.material_override = cone_material

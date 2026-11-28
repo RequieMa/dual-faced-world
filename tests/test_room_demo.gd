@@ -186,6 +186,10 @@ func _run_scene_tests() -> void:
 	_check("坐下后鼠标事件能转发到 3D 监控屏", demo._forward_mouse_to_monitor(motion))
 	demo.monitor_ui.feed_clicked.emit("C2")
 	_check("屏幕 UI 点击信号能选中机位", String(demo.selected_feed) == "C2")
+	var laser_line: Line2D = demo.monitor_ui._laser_line
+	demo.monitor_ui._flash_laser(Vector2(120, 60))
+	_check("监控画面有 2D 激光线", laser_line != null and laser_line.visible
+		and laser_line.points.size() == 2)
 	demo.set_seated(false)
 	_check("站起后玩家状态同步", not demo.player.seated)
 
