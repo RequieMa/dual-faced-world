@@ -54,6 +54,10 @@
 - **飞鼠**：舞台/后台各有 1 只（共 2 只），尺寸与钥匙/线索 primitive 的 0.34m 一致。
   会在地面巡游、展开翼膜滑翔、贴墙攀爬；碰到线索会叼起，飞一段后在房间内换位置放下。
   已经预留火焰敏感接口：火源进入警戒半径时飞鼠立即转向并加速逃离（`set_fire_sources`）。
+- **火焰**：舞台中央有程序化 3D 燃烧场，火焰会随时间扩张并烧向舞台机位；
+  机位被火焰持续覆盖 **20 秒** 会走 `CameraSession.force_burn()` 过载爆炸。
+  燃烧场是 20×24×20 的低分辨率 CPU 网格（温度/燃料/烟尘 + 浮力半拉格朗日平流），
+  渲染端用 3D 纹理 raymarch、黑体温度 LUT 和加法混合；音频是运行时合成的风声/噼啪声。
 - **拍照**：NPC 捡到线索自动拍照；照片带拍摄时间、机位和缩略图（headless 下用占位纹理）。
 - **组合/冷却**：滚动屏上最后两张线索照片的**拍摄时间差 ≤ 20 秒**，且是门禁码的两半，
   才会合成 `A-317`；间隔太久、不是一对或截图展示结束后，滚动屏进入冷却并自动清屏，
@@ -79,6 +83,7 @@
 | 3D 监控屏内容 | `scripts/room_demo/monitor_ui.gd` |
 | 3D 滚动屏内容 | `scripts/room_demo/scroll_screen_ui.gd` |
 | 飞鼠 | `scripts/room_demo/flying_squirrel.gd` |
+| 程序化火焰 | `scripts/room_demo/fire_system.gd` + `shaders/procedural_fire.gdshader` |
 | 测试 | `tests/test_room_demo.gd` |
 
 Avatar 资产说明见 [docs/AVATARS.md](AVATARS.md)。当前：鸡哥 = 莽撞 NPC，
@@ -90,7 +95,7 @@ Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、�
 ## 5. 验证
 
 ```sh
-godot --headless --path . --script tests/test_room_demo.gd   # 99 checks
+godot --headless --path . --script tests/test_room_demo.gd   # 104 checks
 godot --headless --path . --script tests/run_all.gd          # 29 suites
 ```
 
@@ -109,5 +114,8 @@ godot --headless --path . --script tests/run_all.gd          # 29 suites
 - 模型没有可用的跑步动画：Soyo/Lumine 只做了上臂放下的 A-pose，鸡哥是无骨骼静态模型；
 - NPC 用 waypoint 直线移动，没有导航网格/碰撞避让；
 - 照片缩略图在 headless 下是占位色块；真实运行会截 SubViewport 画面；
+- 程序化火焰目前是 CPU 低分辨率版本：每 0.1s 跑一次 20×24×20 网格，并重建 20 张 3D 纹理切片；
+  体积 raymarch 每像素 28 步。先保证效果和 20 秒烧毁逻辑；后续可改 GPU compute、降低更新频率、
+  复用纹理切片或按画面远近降 raymarch 步数来优化；
 - 没有动画/音效/字幕；数值为 demo 尺度，不是最终设计；
 - 摄像头过载只做光效 + 机位烧毁，没有做物理爆炸伤害。

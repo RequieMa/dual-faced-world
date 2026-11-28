@@ -17,6 +17,7 @@ const UI_SCRIPT := preload("res://scripts/room_demo/room_ui.gd")
 const MONITOR_UI_SCRIPT := preload("res://scripts/room_demo/monitor_ui.gd")
 const SCROLL_UI_SCRIPT := preload("res://scripts/room_demo/scroll_screen_ui.gd")
 const SQUIRREL_SCRIPT := preload("res://scripts/room_demo/flying_squirrel.gd")
+const FIRE_SCRIPT := preload("res://scripts/room_demo/fire_system.gd")
 const LENS_SHADER := preload("res://shaders/lens_distortion.gdshader")
 const LENS_STRENGTH := 0.045
 const AVATAR_LOADER := preload("res://scripts/room_demo/avatar_loader.gd")
@@ -66,6 +67,7 @@ const CLUE_DEFS: Array[Dictionary] = [
 var player: CharacterBody3D = null
 var npcs: Array[Node] = []
 var squirrels: Array[Node] = []
+var fire_system: Node3D = null
 var feeds: Array[Dictionary] = []
 var ui: CanvasLayer = null
 var camera_session: Node = null
@@ -85,6 +87,7 @@ var last_laser: Dictionary = {}
 var _world: Node3D = null
 var _clues: Array[Dictionary] = []
 var _clue_by_id: Dictionary = {}
+var _fire_exposure: Dictionary = {}
 var _door: Node3D = null
 var _door_body: StaticBody3D = null
 var _door_material: StandardMaterial3D = null
@@ -99,6 +102,7 @@ func _ready() -> void:
 	_build_observation_rooms()
 	_build_clues()
 	_build_squirrels()
+	_build_fire()
 	_build_camera_models()
 	_build_player()
 	_build_npcs()
@@ -133,6 +137,10 @@ func tick(delta: float) -> void:
 	for squirrel in squirrels:
 		if is_instance_valid(squirrel):
 			squirrel.tick(npc_delta)
+	if fire_system != null:
+		fire_system.tick(delta)
+		set_fire_sources(fire_system.get_fire_points())
+		_update_fire_camera_exposure(delta)
 	if monitor_ui != null and camera_session != null:
 		monitor_ui.refresh_feed_states(camera_session)
 		_update_dwell_ui()
@@ -921,6 +929,34 @@ func _build_squirrels() -> void:
 		squirrel.setup(def["min"], def["max"], int(def["seed"]), carryables)
 		squirrel.item_dropped.connect(_on_squirrel_item_dropped)
 		squirrels.append(squirrel)
+
+
+func _build_fire() -> void:
+	fire_system = FIRE_SCRIPT.new()
+	fire_system.name = "StageFire"
+	_world.add_child(fire_system)
+	# 飞鼠的火焰敏感点：火心 + 扩张半径采样。
+	set_fire_sources(fire_system.get_fire_points())
+
+
+func _update_fire_camera_exposure(delta: float) -> void:
+	if camera_session == null or fire_system == null:
+		return
+	for feed in feeds:
+		var camera_id := String(feed.get("id", ""))
+		if camera_session.is_burned(camera_id):
+			continue
+		var camera: Camera3D = feed.get("camera")
+		if camera == null:
+			continue
+		if fire_system.threatens_camera(camera.global_position):
+			var exposure := float(_fire_exposure.get(camera_id, 0.0)) + delta
+			_fire_exposure[camera_id] = exposure
+			if exposure >= 20.0 and camera_session.force_burn(camera_id):
+				_fire_exposure.erase(camera_id)
+				_notify("%s 被火焰持续烧灼 20 秒，过载爆炸" % camera_id)
+		else:
+			_fire_exposure[camera_id] = maxf(float(_fire_exposure.get(camera_id, 0.0)) - delta * 2.0, 0.0)
 
 
 func _on_squirrel_item_dropped(item: Node3D, drop_position: Vector3) -> void:

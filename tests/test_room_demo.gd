@@ -185,6 +185,9 @@ func _run_scene_tests() -> void:
 	_check("场景有滚动屏 SubViewport", demo.scroll_viewport != null)
 	_check("3D 滚动屏有屏幕 UI", demo.scroll_ui != null)
 	_check("墙上监控屏有 3D 网格", demo.monitor_mesh != null)
+	_check("场景有程序化火焰系统", demo.fire_system != null)
+	_check("火焰有 3D 体积纹理", demo.fire_system != null and demo.fire_system._texture != null)
+	_check("火焰有程序化音频", demo.fire_system != null and demo.fire_system._audio != null)
 	_check("NPC 使用带碰撞的 CharacterBody3D", demo.npcs[0] is CharacterBody3D
 		and demo.npcs[0].get_node_or_null("NpcCollision") != null)
 	_check("摄像头高度接近天花板", demo.feeds[0]["camera"].global_position.y >= 2.6)
@@ -257,16 +260,19 @@ func _run_scene_tests() -> void:
 		laser_vec.length() > 0.1 and laser_vec.normalized().dot(expected_beam_dir) > 0.999,
 		str(laser_vec))
 	demo.tick(999.0)
+	_check("火焰随时间扩张", demo.fire_system.age > 20.0 and demo.fire_system.radius > 2.0,
+		str(demo.fire_system.get_state()))
 	_check("停留超时后机位烧毁", demo.camera_session.is_burned("C1"))
 	_check("烧毁画面显示雪花", demo.monitor_ui.is_burned_visual("C1"))
 	_check("烧毁后拒绝再进入", not demo.select_feed("C1"))
 
 	demo.set_seated(true)
-	_check("可以放大 C2", demo.select_feed("C2"))
+	_check("火焰持续烧灼后 C2 也过载", demo.camera_session.is_burned("C2"))
+	_check("可以放大 C3", demo.select_feed("C3"))
 	_check("放大后显示返回按钮", demo.ui.is_feed_zoomed())
 	demo.ui._back_button.pressed.emit()
 	_check("返回按钮关闭放大", not demo.ui.is_feed_zoomed())
-	_check("可以放大 C3", demo.select_feed("C3"))
+	_check("可以放大 C4", demo.select_feed("C4"))
 	var esc := InputEventKey.new()
 	esc.keycode = KEY_ESCAPE
 	esc.pressed = true
