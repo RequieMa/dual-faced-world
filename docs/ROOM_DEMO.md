@@ -51,6 +51,9 @@
   `CharacterBody3D + move_and_slide`，会被墙体和家具挡住，不再穿墙。
 - **线索**：2 个，放在房间角落/家具后面；NPC 只有走到很近且看得到时才会顺手捡，
   大多数情况需要玩家用激光或截图把他们引过去。
+- **飞鼠**：舞台/后台各有 1 只（共 2 只），尺寸与钥匙/线索 primitive 的 0.34m 一致。
+  会在地面巡游、展开翼膜滑翔、贴墙攀爬；碰到线索会叼起，飞一段后在房间内换位置放下。
+  已经预留火焰敏感接口：火源进入警戒半径时飞鼠立即转向并加速逃离（`set_fire_sources`）。
 - **拍照**：NPC 捡到线索自动拍照；照片带拍摄时间、机位和缩略图（headless 下用占位纹理）。
 - **组合/冷却**：滚动屏上最后两张线索照片的**拍摄时间差 ≤ 20 秒**，且是门禁码的两半，
   才会合成 `A-317`；间隔太久、不是一对或截图展示结束后，滚动屏进入冷却并自动清屏，
@@ -75,6 +78,7 @@
 | HUD / 照片仓库 / 拖放区 | `scripts/room_demo/room_ui.gd` |
 | 3D 监控屏内容 | `scripts/room_demo/monitor_ui.gd` |
 | 3D 滚动屏内容 | `scripts/room_demo/scroll_screen_ui.gd` |
+| 飞鼠 | `scripts/room_demo/flying_squirrel.gd` |
 | 测试 | `tests/test_room_demo.gd` |
 
 Avatar 资产说明见 [docs/AVATARS.md](AVATARS.md)。当前：鸡哥 = 莽撞 NPC，
@@ -87,7 +91,7 @@ Soyo = 谨慎 NPC，Tactical Lumine = 玩家。枫丹 zip 只有材质预设、�
 
 ```sh
 godot --headless --path . --script tests/test_room_demo.gd   # 99 checks
-godot --headless --path . --script tests/run_all.gd          # 28 suites
+godot --headless --path . --script tests/run_all.gd          # 29 suites
 ```
 
 交互自检：
