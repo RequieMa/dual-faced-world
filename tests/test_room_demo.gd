@@ -33,6 +33,7 @@ func _initialize() -> void:
 	_check("main.tscn 存在", ResourceLoader.exists(MAIN_SCENE))
 	_check("飞鼠独立 demo 场景存在", ResourceLoader.exists("res://scenes/demo_squirrel.tscn"))
 	_check("火焰独立 demo 场景存在", ResourceLoader.exists("res://scenes/demo_fire.tscn"))
+	_check("Lumine 动作 demo 场景存在", ResourceLoader.exists("res://scenes/demo_animation.tscn"))
 
 
 func _process(_delta: float) -> bool:
